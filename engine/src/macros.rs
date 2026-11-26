@@ -459,7 +459,7 @@ fn call(
         "normal" => Ok(limits_type(tp, ctx, LimitsType::Normal)),
         "mathcumsup" => cumulative(tp, ctx, args, true),
         "mathcumsub" => cumulative(tp, ctx, args, false),
-        "insertBreakMark" => Ok(Some(ctx.atom(AtomKind::BreakMark))),
+        "insertBreakMark" | "-" => Ok(Some(ctx.atom(AtomKind::BreakMark))),
         "makeatletter" => {
             tp.make_at_letter();
             Ok(None)
@@ -1494,6 +1494,104 @@ fn call(
             ctx.settings.text_factor = tf;
             Ok(None)
         }
+        "overrightarrow"
+        | "overleftarrow"
+        | "overleftrightarrow"
+        | "underrightarrow"
+        | "underleftarrow"
+        | "underleftrightarrow" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let over = name.starts_with("over");
+            let double = name.ends_with("leftrightarrow");
+            let left = !double && name.ends_with("leftarrow");
+            Ok(Some(ctx.atom(AtomKind::UnderOverArrow {
+                base,
+                over,
+                left,
+                double,
+            })))
+        }
+        "xleftarrow" | "xrightarrow" => {
+            let over = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let under = parse_arg(ctx, tp, args[2].clone(), true)?;
+            Ok(Some(ctx.atom(AtomKind::XArrow {
+                over,
+                under,
+                left: name == "xleftarrow",
+            })))
+        }
+        "underbrace" | "overbrace" | "underbrack" | "overbrack" | "underparen" | "overparen" => {
+            let symbol = match name {
+                "underbrace" => "rbrace",
+                "overbrace" => "lbrace",
+                "underbrack" => "rsqbrack",
+                "overbrack" => "lsqbrack",
+                "underparen" => "rbrack",
+                _ => "lbrack",
+            };
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            ctx.symbol(symbol)?;
+            let id = ctx.atom(AtomKind::OverUnderDelimiter {
+                base,
+                script: None,
+                symbol,
+                kern_unit: Unit::Ex,
+                kern: 0.0,
+                over: name.starts_with("over"),
+            });
+            ctx.get_mut(id).atom_type = AtomType::Inner;
+            Ok(Some(id))
+        }
+        "sideset" => {
+            let l = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let r = parse_arg(ctx, tp, args[2].clone(), true)?;
+            let mut op = parse_arg(ctx, tp, args[3].clone(), true)?;
+            if op.is_none() {
+                let m = ctx.atom(AtomKind::Char {
+                    c: u16::from(b'M'),
+                    text_style: "mathnormal",
+                    math_mode: false,
+                    text_symbol: false,
+                });
+                let elements = ctx.new_row_of(Some(m));
+                op = Some(ctx.atom(AtomKind::Phantom {
+                    elements,
+                    w: false,
+                    h: true,
+                    d: true,
+                }));
+            }
+            let l = scripts_of_cumulative(ctx, l)?;
+            let r = scripts_of_cumulative(ctx, r)?;
+            let id = ctx.atom(AtomKind::SideSets {
+                base: op,
+                left: l,
+                right: r,
+            });
+            let node = ctx.get_mut(id);
+            node.atom_type = AtomType::BigOperator;
+            node.limits = LimitsType::NoLimits;
+            Ok(Some(id))
+        }
+        "longdiv" => {
+            let dividend = value_of_int(&args[1]);
+            let divisor = value_of_int(&args[2]);
+            if divisor == 0 {
+                return Err(Error::parse("Divisor must not be 0."));
+            }
+            const MAX_OPERAND: i32 = 1_000_000_000;
+            if !(-MAX_OPERAND..=MAX_OPERAND).contains(&dividend)
+                || !(-MAX_OPERAND..=MAX_OPERAND).contains(&divisor)
+            {
+                return Err(Error::parse("Operands are too large for longdiv!"));
+            }
+            long_division(ctx, divisor, dividend).map(Some)
+        }
+        "externalFont" => {
+            let name = String::from_utf8_lossy(&wstr::narrow_bytes(&args[1])).into_owned();
+            ctx.text_font = crate::draw::TextFont::new(&name, 0, 10.0);
+            Ok(None)
+        }
         "joinrel" => {
             let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
             Ok(Some(new_typed(
@@ -2148,4 +2246,121 @@ fn strok(
     let roman = ctx.atom(AtomKind::Roman { base: Some(ch) });
     ctx.row_add(a, Some(roman));
     Ok(Some(a))
+}
+
+/// `CumulativeScriptsAtom::getScriptsAtom()`, for `\sideset`.
+fn scripts_of_cumulative(ctx: &mut Ctx, atom: Option<AtomId>) -> Result<Option<AtomId>> {
+    let Some(a) = atom else {
+        return Ok(None);
+    };
+    if let AtomKind::CumulativeScripts { base, sub, sup } = ctx.get(a).kind {
+        return Ok(Some(new_scripts(
+            ctx,
+            base,
+            Some(sub),
+            Some(sup),
+            Alignment::Left,
+        )?));
+    }
+    Ok(atom)
+}
+
+/// A `double` converted to Windows' 32-bit `long` as x64 does it: out of
+/// range gives the "integer indefinite" value.
+fn double_to_long(value: f64) -> i32 {
+    if (-2_147_483_648.0..2_147_483_648.0).contains(&value) {
+        value as i32
+    } else {
+        i32::MIN
+    }
+}
+
+/// `LongDivAtom::calculate()`: the quotient, the dividend, then each
+/// product and remainder. A negative quotient's sign counts as a digit, as
+/// it does in the C++.
+fn long_division_steps(divisor: i32, dividend: i32) -> Vec<String> {
+    let quotient = dividend.wrapping_div(divisor);
+    let mut results = vec![quotient.to_string()];
+    let x = quotient.to_string().into_bytes();
+    let len = x.len();
+    let mut remaining = dividend;
+    results.push(remaining.to_string());
+    for (i, &digit) in x.iter().enumerate() {
+        let power = 10f64.powi((len - i - 1) as i32);
+        let b = double_to_long(f64::from(i32::from(digit) - i32::from(b'0')) * power);
+        let product = b.wrapping_mul(divisor);
+        remaining = remaining.wrapping_sub(product);
+        results.push(product.to_string());
+        results.push(remaining.to_string());
+    }
+    results
+}
+
+/// `LongDivAtom(divisor, dividend)`: a vertical row of the steps.
+fn long_division(ctx: &mut Ctx, divisor: i32, dividend: i32) -> Result<AtomId> {
+    let rule = ctx.atom(AtomKind::Rule {
+        w_unit: Unit::Ex,
+        w: 0.0,
+        h_unit: Unit::Ex,
+        h: 2.6,
+        r_unit: Unit::Ex,
+        r: 0.5,
+    });
+    let mut elements = Vec::new();
+    for (i, text) in long_division_steps(divisor, dividend).iter().enumerate() {
+        let num = parse_plain(ctx, w(text))?.root;
+        if i == 1 {
+            let rparen = ctx.symbol("rbrack")?;
+            let big = ctx.atom(AtomKind::BigDelimiter {
+                delim: rparen,
+                size: 1,
+            });
+            let ph_elements = ctx.new_row_of(Some(big));
+            let ph = ctx.atom(AtomKind::Phantom {
+                elements: ph_elements,
+                w: false,
+                h: true,
+                d: true,
+            });
+            let ra = ctx.new_row_of(Some(ph));
+            let raised = ctx.atom(AtomKind::Raise {
+                base: Some(big),
+                r_unit: Unit::X8,
+                r: 3.5,
+                h_unit: Unit::X8,
+                h: 0.0,
+                d_unit: Unit::X8,
+                d: 0.0,
+            });
+            let smashed = ctx.atom(AtomKind::Smashed {
+                atom: raised,
+                h: true,
+                d: true,
+            });
+            ctx.row_add(ra, Some(smashed));
+            ctx.row_add(ra, num);
+            let oa = ctx.atom(AtomKind::Overlined { base: Some(ra) });
+            let divisor_root = parse_plain(ctx, w(&divisor.to_string()))?.root;
+            let row = ctx.new_row_of(divisor_root);
+            let space = ctx.atom(AtomKind::Space(SpaceData::blank_of(SpaceType::ThinMuSkip)));
+            ctx.row_add(row, Some(space));
+            ctx.row_add(row, Some(oa));
+            elements.push(row);
+            continue;
+        }
+        let row = ctx.new_row_of(num);
+        ctx.row_add(row, Some(rule));
+        if i % 2 == 0 && i != 0 {
+            elements.push(ctx.atom(AtomKind::Underlined { base: Some(row) }));
+        } else {
+            elements.push(row);
+        }
+    }
+    Ok(ctx.atom(AtomKind::VRow {
+        elements,
+        raise: SpaceData::sized(Unit::Ex, 0.0, 0.0, 0.0),
+        add_interline: false,
+        valign: Alignment::Top,
+        halign: Alignment::Right,
+    }))
 }

@@ -822,6 +822,22 @@ impl Parser {
         if ctx.right_type(atom) == AtomType::BigOperator {
             return Ok(Some(new_big_operator(ctx, Some(atom), sub, sup)?));
         }
+        if let AtomKind::OverUnderDelimiter { over, .. } = ctx.get(atom).kind {
+            let taken = if over { sup } else { sub };
+            if taken.is_some() {
+                if let AtomKind::OverUnderDelimiter { script, .. } = &mut ctx.get_mut(atom).kind {
+                    *script = taken;
+                }
+                let (sub, sup) = if over { (sub, None) } else { (None, sup) };
+                return Ok(Some(new_scripts(
+                    ctx,
+                    Some(atom),
+                    sub,
+                    sup,
+                    Alignment::Left,
+                )?));
+            }
+        }
         Ok(Some(new_scripts(
             ctx,
             Some(atom),

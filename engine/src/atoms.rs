@@ -431,6 +431,36 @@ pub enum AtomKind {
         base: AtomId,
         kind: Frame,
     },
+    /// `UnderOverArrowAtom`: one arrow (`left` or right), or both when
+    /// `double` is set, over or under the base.
+    UnderOverArrow {
+        base: Option<AtomId>,
+        over: bool,
+        left: bool,
+        double: bool,
+    },
+    /// `XArrowAtom`.
+    XArrow {
+        over: Option<AtomId>,
+        under: Option<AtomId>,
+        left: bool,
+    },
+    /// `OverUnderDelimiter`: a brace over or under the base, with the script
+    /// the parser hands it.
+    OverUnderDelimiter {
+        base: Option<AtomId>,
+        script: Option<AtomId>,
+        symbol: &'static str,
+        kern_unit: Unit,
+        kern: f32,
+        over: bool,
+    },
+    /// `SideSetsAtom`.
+    SideSets {
+        base: Option<AtomId>,
+        left: Option<AtomId>,
+        right: Option<AtomId>,
+    },
     /// `MiddleAtom`.
     Middle {
         base: Option<AtomId>,

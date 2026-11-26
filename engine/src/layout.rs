@@ -338,6 +338,26 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
             valign,
             halign,
         } => vrow_box(ctx, &elements, &raise, add_interline, valign, halign, env),
+        AtomKind::UnderOverArrow {
+            base,
+            over,
+            left,
+            double,
+        } => crate::decor::under_over_arrow(ctx, base, over, left, double, env),
+        AtomKind::XArrow { over, under, left } => {
+            crate::decor::x_arrow(ctx, over, under, left, env)
+        }
+        AtomKind::OverUnderDelimiter {
+            base,
+            script,
+            symbol,
+            kern_unit,
+            kern,
+            over,
+        } => crate::decor::over_under_delimiter(
+            ctx, base, script, symbol, kern_unit, kern, over, env,
+        ),
+        AtomKind::SideSets { .. } => crate::decor::side_sets(ctx, id, env),
         AtomKind::Vdots => crate::decor::vdots(ctx, env),
         AtomKind::DiagonalDots { iddots } => {
             let aligns = if iddots {
@@ -1142,6 +1162,11 @@ pub fn new_big_operator(
 
 fn big_operator_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<BoxId> {
     let (original, under, over, limits_set, limits) = big_operator_fields(ctx, id);
+    if let Some(b) = original
+        && matches!(ctx.get(b).kind, AtomKind::SideSets { .. })
+    {
+        return crate::decor::side_sets_operator(ctx, b, under, over, env);
+    }
     let style = env.style;
     let mut row: Option<AtomId> = None;
     let mut base = original;

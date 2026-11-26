@@ -283,6 +283,33 @@ pub enum AtomKind {
         base: Option<AtomId>,
         underbase: Option<AtomId>,
     },
+    /// `RuleAtom`.
+    Rule {
+        w_unit: Unit,
+        w: f32,
+        h_unit: Unit,
+        h: f32,
+        r_unit: Unit,
+        r: f32,
+    },
+    /// `RaiseAtom`.
+    Raise {
+        base: Option<AtomId>,
+        r_unit: Unit,
+        r: f32,
+        h_unit: Unit,
+        h: f32,
+        d_unit: Unit,
+        d: f32,
+    },
+    /// `VRowAtom`.
+    VRow {
+        elements: Vec<AtomId>,
+        raise: SpaceData,
+        add_interline: bool,
+        valign: Alignment,
+        halign: Alignment,
+    },
     /// `FBoxAtom`: a frame, filled with `bg` unless it is transparent.
     FBox {
         base: AtomId,
@@ -524,6 +551,7 @@ impl<'a> Ctx<'a> {
             }
             AtomKind::Typed { left, .. } => *left,
             AtomKind::Fenced { .. } => AtomType::Inner,
+            AtomKind::Raise { base: Some(b), .. } => self.left_type(*b),
             AtomKind::UnderOver(data) => {
                 data.base.map_or(AtomType::Ordinary, |b| self.left_type(b))
             }
@@ -545,6 +573,7 @@ impl<'a> Ctx<'a> {
             }
             AtomKind::Typed { right, .. } => *right,
             AtomKind::Fenced { .. } => AtomType::Inner,
+            AtomKind::Raise { base: Some(b), .. } => self.right_type(*b),
             AtomKind::UnderOver(data) => {
                 data.base.map_or(AtomType::Ordinary, |b| self.right_type(b))
             }

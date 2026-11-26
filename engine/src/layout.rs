@@ -283,6 +283,56 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
             base,
             underbase,
         } => accented_box(ctx, accent, acc, change_size, base, underbase, env),
+        AtomKind::Rule {
+            w_unit,
+            w,
+            h_unit,
+            h,
+            r_unit,
+            r,
+        } => {
+            let w = unit_factor(w_unit, env) * w;
+            let h = unit_factor(h_unit, env) * h;
+            let r = unit_factor(r_unit, env) * r;
+            ctx.boxes.rule(h, w, r, crate::draw::TRANSPARENT, true)
+        }
+        AtomKind::Raise {
+            base,
+            r_unit,
+            r,
+            h_unit,
+            h,
+            d_unit,
+            d,
+        } => {
+            let b = create_box(ctx, base.ok_or_else(null_atom)?, env)?;
+            ctx.boxes.get_mut(b).shift = if r_unit == Unit::None {
+                0.0
+            } else {
+                unit_size(r_unit, -r, env)
+            };
+            if h_unit == Unit::None {
+                return Ok(b);
+            }
+            let hbox = ctx.boxes.hbox_of(b)?;
+            let height = unit_size(h_unit, h, env);
+            let depth = if d_unit == Unit::None {
+                0.0
+            } else {
+                unit_size(d_unit, d, env)
+            };
+            let node = ctx.boxes.get_mut(hbox);
+            node.height = height;
+            node.depth = depth;
+            Ok(hbox)
+        }
+        AtomKind::VRow {
+            elements,
+            raise,
+            add_interline,
+            valign,
+            halign,
+        } => vrow_box(ctx, &elements, &raise, add_interline, valign, halign, env),
         AtomKind::FBox { base, bg, line } => {
             let b = create_box(ctx, base, env)?;
             let drt = env
@@ -1617,4 +1667,79 @@ fn accented_box(
         return Ok(hb);
     }
     Ok(vbox)
+}
+
+fn vrow_box(
+    ctx: &mut Ctx,
+    elements: &[AtomId],
+    raise: &SpaceData,
+    add_interline: bool,
+    valign: Alignment,
+    halign: Alignment,
+    env: &mut Environment,
+) -> Result<BoxId> {
+    let vb = ctx.boxes.vbox()?;
+    let interline = ctx.boxes.strut(0.0, env.interline(), 0.0, 0.0)?;
+    let s = elements.len();
+    if halign != Alignment::None {
+        let mut max_width = f32::MIN;
+        let mut boxes = Vec::with_capacity(s);
+        for &e in elements {
+            let b = create_box(ctx, e, env)?;
+            if max_width < ctx.boxes.width(b) {
+                max_width = ctx.boxes.width(b);
+            }
+            boxes.push(b);
+        }
+        for (i, &b) in boxes.iter().enumerate() {
+            let hb = ctx.boxes.hbox_aligned(b, max_width, halign)?;
+            ctx.boxes.vbox_add(vb, hb)?;
+            if add_interline && i + 1 < s {
+                ctx.boxes.vbox_add(vb, interline)?;
+            }
+        }
+    } else {
+        for (i, &e) in elements.iter().enumerate() {
+            let b = create_box(ctx, e, env)?;
+            ctx.boxes.vbox_add(vb, b)?;
+            if add_interline && i + 1 < s {
+                ctx.boxes.vbox_add(vb, interline)?;
+            }
+        }
+    }
+    let r = space_box(ctx, raise, env)?;
+    ctx.boxes.get_mut(vb).shift = -ctx.boxes.width(r);
+    let count = ctx.boxes.group_len(vb);
+    match valign {
+        Alignment::Top => {
+            let t = if count == 0 {
+                0.0
+            } else {
+                let first = ctx.boxes.group_child(vb, 0);
+                ctx.boxes.height(first)
+            };
+            let node = ctx.boxes.get_mut(vb);
+            node.height = t;
+            node.depth = node.depth + node.height - t;
+        }
+        Alignment::Center => {
+            let axis = env.font.style_param(&env.settings, "axisheight", env.style);
+            let node = ctx.boxes.get_mut(vb);
+            let h = node.height + node.depth;
+            node.height = h / 2.0 + axis;
+            node.depth = h / 2.0 - axis;
+        }
+        _ => {
+            let t = if count == 0 {
+                0.0
+            } else {
+                let last = ctx.boxes.group_child(vb, count - 1);
+                ctx.boxes.depth(last)
+            };
+            let node = ctx.boxes.get_mut(vb);
+            node.height = node.depth + node.height - t;
+            node.depth = t;
+        }
+    }
+    Ok(vb)
 }

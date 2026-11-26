@@ -5,14 +5,18 @@
 //! defines live in the formula's `Ctx`, as the C++ rolls its global registry
 //! back to the built-ins before every formula.
 
+use crate::atoms::UnderOverData;
 use crate::atoms::{AtomId, AtomKind, Ctx, LimitsType, SpaceData};
+use crate::boxes::Alignment;
 use crate::boxes::cmax;
 use crate::boxes::cmin;
 use crate::draw::{BLACK, TRANSPARENT};
 use crate::enums::{AtomType, SpaceType, Unit};
+use crate::env::parse_length;
 use crate::error::{Error, Result};
 use crate::font::TexStyle;
 use crate::layout::new_fraction;
+use crate::layout::{new_fraction_with, new_under_over_one};
 use crate::numparse::{read_float, read_hex_u32};
 use crate::parser::{Args, Parser, new_color, new_cumulative_scripts, parse_arg, parse_sub};
 use crate::tables::{self, MacroKind};
@@ -625,6 +629,111 @@ fn call(
             let accent = parse_arg(ctx, tp, args[1].clone(), false)?;
             Ok(Some(new_accented(ctx, base, accent, name == "accent")?))
         }
+        "kern" => {
+            let (unit, value) = tp.get_length()?;
+            if unit == Unit::None {
+                return Err(Error::parse("Missing dimension for \\kern!"));
+            }
+            Ok(Some(ctx.atom(AtomKind::Space(SpaceData::sized(
+                unit, value, 0.0, 0.0,
+            )))))
+        }
+        "hspace" | "vspace" => {
+            let (unit, value) = parse_length(&args[1]);
+            Ok(Some(ctx.atom(AtomKind::Space(if name == "hspace" {
+                SpaceData::sized(unit, value, 0.0, 0.0)
+            } else {
+                SpaceData::sized(unit, 0.0, value, 0.0)
+            }))))
+        }
+        "rule" => {
+            let (w_unit, w) = parse_length(&args[1]);
+            let (h_unit, h) = parse_length(&args[2]);
+            let (r_unit, r) = parse_length(&args[3]);
+            Ok(Some(ctx.atom(AtomKind::Rule {
+                w_unit,
+                w,
+                h_unit,
+                h,
+                r_unit,
+                r: -r,
+            })))
+        }
+        "raisebox" => {
+            let (r_unit, r) = parse_length(&args[1]);
+            let (h_unit, h) = parse_length(&args[3]);
+            let (d_unit, d) = parse_length(&args[4]);
+            let base = parse_arg(ctx, tp, args[2].clone(), true)?;
+            Ok(Some(ctx.atom(AtomKind::Raise {
+                base,
+                r_unit,
+                r,
+                h_unit,
+                h,
+                d_unit,
+                d,
+            })))
+        }
+        "smash" => {
+            let atom = parse_arg(ctx, tp, args[1].clone(), false)?
+                .ok_or_else(|| Error::invalid_state("Nothing to smash."))?;
+            let (h, d) = if wstr::eq(&args[2], "opt") {
+                (true, false)
+            } else if wstr::eq(&args[2], "b") {
+                (false, true)
+            } else {
+                (true, true)
+            };
+            Ok(Some(ctx.atom(AtomKind::Smashed { atom, h, d })))
+        }
+        "stackrel" | "stackbin" => {
+            let base = parse_arg(ctx, tp, args[2].clone(), false)?;
+            let under = parse_arg(ctx, tp, args[3].clone(), false)?;
+            let over = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let a = ctx.atom(AtomKind::UnderOver(Box::new(UnderOverData {
+                base,
+                under,
+                under_unit: Unit::Mu,
+                under_space: 0.5,
+                under_small: true,
+                over,
+                over_unit: Unit::Mu,
+                over_space: 2.5,
+                over_small: true,
+            })));
+            let t = if name == "stackrel" {
+                AtomType::Relation
+            } else {
+                AtomType::BinaryOperator
+            };
+            Ok(Some(new_typed(ctx, t, t, Some(a))?))
+        }
+        "underaccent" => {
+            let base = parse_arg(ctx, tp, args[2].clone(), false)?;
+            let script = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_under_over_one(
+                ctx,
+                base,
+                script,
+                Unit::Mu,
+                0.3,
+                true,
+                false,
+            )))
+        }
+        "lmoustache" | "rmoustache" => {
+            let shared = ctx.symbol(name)?;
+            let delim = ctx.private_copy(shared);
+            let b = ctx.atom(AtomKind::BigDelimiter { delim, size: 1 });
+            ctx.get_mut(b).atom_type = if name == "lmoustache" {
+                AtomType::Opening
+            } else {
+                AtomType::Closing
+            };
+            Ok(Some(b))
+        }
+        "sfrac" => sfrac(tp, ctx, args),
+        "genfrac" => genfrac(tp, ctx, args),
         "joinrel" => {
             let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
             Ok(Some(new_typed(
@@ -914,4 +1023,113 @@ fn new_accented(
         base,
         underbase,
     }))
+}
+
+/// `VRowAtom(el)` raised by `r` ex.
+fn new_vrow_raised(ctx: &mut Ctx, el: Option<AtomId>, r: f32) -> AtomId {
+    let elements = match el {
+        None => Vec::new(),
+        Some(e) => match &ctx.get(e).kind {
+            AtomKind::VRow { elements, .. } => elements.clone(),
+            _ => vec![e],
+        },
+    };
+    ctx.atom(AtomKind::VRow {
+        elements,
+        raise: SpaceData::sized(Unit::Ex, r, 0.0, 0.0),
+        add_interline: false,
+        valign: Alignment::Center,
+        halign: Alignment::None,
+    })
+}
+
+fn scale_atom(ctx: &mut Ctx, base: AtomId, sx: f32, sy: f32) -> AtomId {
+    let atom_type = ctx.get(base).atom_type;
+    let id = ctx.atom(AtomKind::Scale { base, sx, sy });
+    ctx.get_mut(id).atom_type = atom_type;
+    id
+}
+
+/// `macro_sfrac`: a slanted fraction.
+fn sfrac(tp: &mut Parser, ctx: &mut Ctx, args: &mut Args) -> Result<Option<AtomId>> {
+    let num = parse_arg(ctx, tp, args[1].clone(), false)?;
+    let den = parse_arg(ctx, tp, args[2].clone(), false)?;
+    let (Some(num), Some(den)) = (num, den) else {
+        return Err(Error::parse(
+            "Both numerator and denominator of a fraction can't be empty!",
+        ));
+    };
+    let (mut sx, mut sy, mut r, mut sl, mut sr) = (0.75, 0.75, 0.45, -0.13, -0.065);
+    let mut slash = ctx.symbol("slash")?;
+    if !tp.is_math_mode() {
+        (sx, sy, r, sl, sr) = (0.6, 0.5, 0.75, -0.24, -0.24);
+        let solidus = ctx.symbol("textfractionsolidus")?;
+        let inner = scale_atom(ctx, solidus, 1.25, 0.65);
+        slash = new_vrow_raised(ctx, Some(inner), 0.4);
+    }
+    let scaled = scale_atom(ctx, num, sx, sy);
+    let snum = new_vrow_raised(ctx, Some(scaled), r);
+    let row = ctx.new_row_of(Some(snum));
+    let a = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Em, sl, 0.0, 0.0)));
+    ctx.row_add(row, Some(a));
+    ctx.row_add(row, Some(slash));
+    let b = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Em, sr, 0.0, 0.0)));
+    ctx.row_add(row, Some(b));
+    let d = scale_atom(ctx, den, sx, sy);
+    ctx.row_add(row, Some(d));
+    Ok(Some(row))
+}
+
+/// `macro_genfrac`: `\genfrac{left}{right}{thickness}{style}{num}{den}`.
+fn genfrac(tp: &mut Parser, ctx: &mut Ctx, args: &mut Args) -> Result<Option<AtomId>> {
+    let left = parse_arg(ctx, tp, args[1].clone(), false)?;
+    let left = left.filter(|&a| matches!(ctx.get(a).kind, AtomKind::Symbol { .. }));
+    let right = parse_arg(ctx, tp, args[2].clone(), false)?;
+    let right = right.filter(|&a| matches!(ctx.get(a).kind, AtomKind::Symbol { .. }));
+    let mut rule = true;
+    let (mut unit, mut value) = parse_length(&args[3]);
+    if args[3].is_empty() {
+        unit = Unit::Em;
+        value = 0.0;
+        rule = false;
+    }
+    let style = if args[4].is_empty() {
+        0
+    } else {
+        value_of_int(&args[4])
+    };
+    if !(0..=3).contains(&style) {
+        return Err(Error::parse("Bad style in genfrac!"));
+    }
+    let num = parse_arg(ctx, tp, args[5].clone(), false)?;
+    let den = parse_arg(ctx, tp, args[6].clone(), false)?;
+    if num.is_none() || den.is_none() {
+        return Err(Error::parse(
+            "Both numerator and denominator of a fraction can't be empty!",
+        ));
+    }
+    let fa = new_fraction_with(ctx, num, den, rule, unit, value);
+    let keep = |ctx: &Ctx, s: Option<AtomId>| {
+        s.filter(|&s| {
+            !matches!(
+                ctx.get(s).kind,
+                AtomKind::Symbol {
+                    name: "normaldot",
+                    ..
+                }
+            )
+        })
+    };
+    let (left, right) = (keep(ctx, left), keep(ctx, right));
+    let fenced = ctx.atom(AtomKind::Fenced {
+        base: fa,
+        left,
+        right,
+        middle: Vec::new(),
+    });
+    let tex_style = TexStyle::from_index(style * 2).unwrap_or(TexStyle::Display);
+    let styled = new_style(ctx, tex_style, Some(fenced));
+    let row = ctx.new_row();
+    ctx.row_add(row, Some(styled));
+    Ok(Some(row))
 }

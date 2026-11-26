@@ -380,10 +380,12 @@ impl MatrixData {
                         if steps > MAX_COLUMN_SPEC_STEPS {
                             return Err(too_complex());
                         }
-                        let key = wstr::substr(&opt, i64::from(pos), i64::from(spos - pos))?;
-                        if let Some(spec) = ctx.column_types.get(&key).cloned() {
+                        let key = opt
+                            .get(pos as usize..spos as usize)
+                            .ok_or_else(Error::out_of_range)?;
+                        if let Some(spec) = ctx.column_types.get(key) {
                             replaced = true;
-                            insert_at(&mut opt, spos, &spec)?;
+                            insert_at(&mut opt, spos, spec)?;
                             len = opt.len() as i32;
                             pos = spos - 1;
                             break;

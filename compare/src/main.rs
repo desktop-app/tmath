@@ -155,26 +155,40 @@ struct Recorder {
     lines: Vec<String>,
 }
 
+/// The oracle's `MeasureText()`.
+fn measure_text(font: &TextFont, text: &[u16]) -> Rect {
+    let size = font.size();
+    let mut width = 0.0f32;
+    for &unit in text {
+        width += (0.5 + f32::from(unit % 13) * 0.031_25) * size;
+    }
+    if font.style & 1 != 0 {
+        width *= 1.0625;
+    }
+    if font.style & 2 != 0 {
+        width += 0.125 * size;
+    }
+    let family_shift = (font.family.len() % 5) as f32 * 0.015_625 * size;
+    Rect {
+        x: 0.0625 * size + family_shift,
+        y: -0.75 * size,
+        w: width,
+        h: size,
+    }
+}
+
+/// Measures without recording, as the oracle does under `--bench`.
+struct Quiet;
+
+impl Measure for Quiet {
+    fn measure(&mut self, font: &TextFont, text: &[u16]) -> Rect {
+        measure_text(font, text)
+    }
+}
+
 impl Measure for Recorder {
     fn measure(&mut self, font: &TextFont, text: &[u16]) -> Rect {
-        let size = font.size();
-        let mut width = 0.0f32;
-        for &unit in text {
-            width += (0.5 + f32::from(unit % 13) * 0.031_25) * size;
-        }
-        if font.style & 1 != 0 {
-            width *= 1.0625;
-        }
-        if font.style & 2 != 0 {
-            width += 0.125 * size;
-        }
-        let family_shift = (font.family.len() % 5) as f32 * 0.015_625 * size;
-        let rect = Rect {
-            x: 0.0625 * size + family_shift,
-            y: -0.75 * size,
-            w: width,
-            h: size,
-        };
+        let rect = measure_text(font, text);
         self.lines.push(format!(
             "measure {} {} -> {} {} {} {}",
             describe_text_font(font),
@@ -277,13 +291,45 @@ fn fnv1a(lines: &[String], mut hash: u64) -> u64 {
     hash
 }
 
+/// The best of `repeat` runs of parse and layout, dropping the result
+/// included, as the oracle's `--bench` times `LaTeX::parse` and the delete.
+fn time(record: &Record, repeat: u32) -> (bool, std::time::Duration) {
+    let mut best = std::time::Duration::MAX;
+    let mut ok = true;
+    for _ in 0..repeat {
+        let mut quiet = Quiet;
+        let start = std::time::Instant::now();
+        let result = tmath::layout(
+            &record.tex,
+            record.width,
+            record.size,
+            record.line,
+            record.fg,
+            &mut quiet,
+        );
+        ok &= result.is_ok();
+        drop(result);
+        best = best.min(start.elapsed());
+    }
+    (ok, best)
+}
+
 fn main() {
     let mut digest = false;
     let mut with_boxes = true;
-    for arg in std::env::args().skip(1) {
+    let mut bench = 0;
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--digest" => digest = true,
             "--no-boxes" => with_boxes = false,
+            "--bench" => {
+                bench = args
+                    .next()
+                    .and_then(|n| n.parse::<u32>().ok())
+                    .unwrap_or(1)
+                    .max(1);
+            }
             _ => {
                 eprintln!("Unknown argument: {arg}");
                 std::process::exit(2);
@@ -306,6 +352,12 @@ fn main() {
         };
         if record.id.is_empty() {
             record.id = (number + 1).to_string();
+        }
+        if bench > 0 {
+            let (ok, best) = time(&record, bench);
+            let status = if ok { "ok" } else { "error" };
+            let _ = writeln!(stdout, "{}	{status}	{}", record.id, best.as_nanos());
+            continue;
         }
         let out = run(&record, with_boxes);
         let mut text = format!("@ {}\nstatus {}\n", record.id, out.status);

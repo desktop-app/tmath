@@ -15,6 +15,10 @@ void Measured(std::string line) {
 	}
 }
 
+bool Recording() {
+	return CurrentRecorder != nullptr;
+}
+
 void Op(std::string line) {
 	if (CurrentRecorder) {
 		CurrentRecorder->ops.push_back(std::move(line));
@@ -152,6 +156,10 @@ public:
 			_font->style(),
 			_font->getSize(),
 			_text);
+		// Nothing records under --bench, so the line is not built there.
+		if (!oracle::Recording()) {
+			return;
+		}
 		oracle::Measured("measure " + _font->describe()
 			+ " " + FormatText(_text)
 			+ " -> " + FormatFloat(bounds.x)

@@ -500,8 +500,26 @@ impl AtomNode {
     }
 }
 
-/// The deepest wrapper chain `inheritWrapDepth` allows.
-pub const MAX_WRAP_DEPTH: i32 = 250;
+/// The deepest wrapper chain `inheritWrapDepth` allows. A wrapper restarts
+/// the count, so layout depth has its own guard as well.
+pub const MAX_WRAP_DEPTH: i32 = 16;
+
+/// A formula's parse-time state, set aside while a predefined formula is
+/// parsed as the C++ parses it at start-up.
+pub struct StartupSaved {
+    user_macros: BTreeMap<Vec<u16>, (i32, i32)>,
+    user_codes: BTreeMap<Vec<u16>, Vec<u16>>,
+    user_replacements: BTreeMap<Vec<u16>, Vec<u16>>,
+    err_if_conflict: bool,
+    user_colors: BTreeMap<String, u32>,
+    column_types: BTreeMap<Vec<u16>, Vec<u16>>,
+    inserted_formula_mappings: HashSet<u16>,
+    parse_depth: i32,
+    expansion_work: i64,
+    expanded_total: i64,
+    expanded_cap: i64,
+    limit_exceeded: bool,
+}
 
 /// Everything one formula's parse and layout share. The C++ keeps most of
 /// this in globals and resets it before each formula.
@@ -516,6 +534,18 @@ pub struct Ctx<'a> {
     pub parse_depth: i32,
     /// `gExpansionWork`.
     pub expansion_work: i64,
+    /// `gExpandedTotal` and `gExpandedCap`.
+    pub expanded_total: i64,
+    pub expanded_cap: i64,
+    /// `gLimitExceeded`: a limit was hit, so the formula is refused.
+    pub limit_exceeded: bool,
+    /// `gScriptsLayoutDepth`.
+    pub scripts_layout_depth: i32,
+    /// The expansion work start-up parses have done.
+    startup_expansion_work: i64,
+    /// Predefined formulas the C++ start-up does not keep: their root is a
+    /// row, or they fail to parse there.
+    pub predefined_uncached: HashSet<Vec<u16>>,
     symbols: HashMap<&'static str, AtomId>,
     /// User commands: name to (argc, posOpts).
     pub user_macros: BTreeMap<Vec<u16>, (i32, i32)>,
@@ -556,6 +586,12 @@ impl<'a> Ctx<'a> {
             measure,
             parse_depth: 0,
             expansion_work: 0,
+            expanded_total: 0,
+            expanded_cap: 0,
+            limit_exceeded: false,
+            scripts_layout_depth: 0,
+            startup_expansion_work: 0,
+            predefined_uncached: HashSet::new(),
             symbols: HashMap::new(),
             user_macros: BTreeMap::new(),
             user_codes: BTreeMap::new(),
@@ -572,6 +608,43 @@ impl<'a> Ctx<'a> {
             predefined: HashMap::new(),
             inserted_formula_mappings: HashSet::new(),
         }
+    }
+
+    /// Sets the formula's parse-time state aside for a start-up parse: the
+    /// built-in commands only, no depth, and the expansion counters of the
+    /// C++ start-up, whose cap on expanded text is still 0.
+    pub fn enter_startup(&mut self) -> StartupSaved {
+        use std::mem::{replace, take};
+        StartupSaved {
+            user_macros: take(&mut self.user_macros),
+            user_codes: take(&mut self.user_codes),
+            user_replacements: take(&mut self.user_replacements),
+            err_if_conflict: replace(&mut self.err_if_conflict, true),
+            user_colors: take(&mut self.user_colors),
+            column_types: take(&mut self.column_types),
+            inserted_formula_mappings: take(&mut self.inserted_formula_mappings),
+            parse_depth: replace(&mut self.parse_depth, 0),
+            expansion_work: replace(&mut self.expansion_work, self.startup_expansion_work),
+            expanded_total: replace(&mut self.expanded_total, 0),
+            expanded_cap: replace(&mut self.expanded_cap, 0),
+            limit_exceeded: replace(&mut self.limit_exceeded, false),
+        }
+    }
+
+    pub fn leave_startup(&mut self, saved: StartupSaved) {
+        self.startup_expansion_work = self.expansion_work;
+        self.user_macros = saved.user_macros;
+        self.user_codes = saved.user_codes;
+        self.user_replacements = saved.user_replacements;
+        self.err_if_conflict = saved.err_if_conflict;
+        self.user_colors = saved.user_colors;
+        self.column_types = saved.column_types;
+        self.inserted_formula_mappings = saved.inserted_formula_mappings;
+        self.parse_depth = saved.parse_depth;
+        self.expansion_work = saved.expansion_work;
+        self.expanded_total = saved.expanded_total;
+        self.expanded_cap = saved.expanded_cap;
+        self.limit_exceeded = saved.limit_exceeded;
     }
 
     pub fn add(&mut self, node: AtomNode) -> AtomId {
@@ -606,6 +679,7 @@ impl<'a> Ctx<'a> {
         let depth = self.get(base).wrap_depth + 1;
         self.get_mut(id).wrap_depth = depth;
         if depth > MAX_WRAP_DEPTH {
+            self.limit_exceeded = true;
             return Err(Error::parse("Formula nesting is too deep!"));
         }
         Ok(())

@@ -27,6 +27,7 @@ namespace tex {
 struct OracleAccess {
 	static void Dump(std::ostream &out);
 	static void FontQueries(std::ostream &out);
+	static void PredefinedCache(std::ostream &out);
 };
 
 namespace {
@@ -363,6 +364,13 @@ void OracleAccess::FontQueries(std::ostream &out) {
 	}
 }
 
+// The predefined formulas init parsed and kept, which later formulas share.
+void OracleAccess::PredefinedCache(std::ostream &out) {
+	for (const auto &[name, formula] : Formula::_predefinedTeXFormulas) {
+		out << "cached " << FormatText(name) << "\n";
+	}
+}
+
 } // namespace tex
 
 namespace oracle {
@@ -373,6 +381,10 @@ void DumpTables(std::ostream &out) {
 
 void FontQueries(std::ostream &out) {
 	tex::OracleAccess::FontQueries(out);
+}
+
+void PredefinedCache(std::ostream &out) {
+	tex::OracleAccess::PredefinedCache(out);
 }
 
 } // namespace oracle

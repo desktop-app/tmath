@@ -116,6 +116,7 @@ impl Formula {
         let root = self.root;
         self.array_mut()?.add_col(root);
         self.root = None;
+        self.over_count = 0;
         Ok(())
     }
 
@@ -124,6 +125,7 @@ impl Formula {
         let root = self.root;
         self.array_mut()?.add_col_n(root, n);
         self.root = None;
+        self.over_count = 0;
         Ok(())
     }
 
@@ -132,6 +134,7 @@ impl Formula {
         let root = self.root;
         self.array_mut()?.add_row(root);
         self.root = None;
+        self.over_count = 0;
         Ok(())
     }
 
@@ -325,6 +328,8 @@ impl MatrixData {
                     if lpos.len() > cols {
                         lpos.truncate(cols);
                     }
+                    let work = i64::from(self.array.rows()) * i64::from(self.array.cols() + 1);
+                    crate::parser::count_parse_work(ctx, work)?;
                     Rc::make_mut(&mut self.array).insert_atom_into_col(lpos.len(), atom);
                     lpos.push(Alignment::None);
                     pos += tp.pos;

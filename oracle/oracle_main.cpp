@@ -20,6 +20,7 @@
 //   microtex_oracle --dump-tables
 //   microtex_oracle --font-queries
 //   microtex_oracle --env-queries
+//   microtex_oracle --predefined-cache
 #include "dump_tables.h"
 #include "recording.h"
 
@@ -450,6 +451,7 @@ int main(int argc, char *argv[]) {
 	auto tables = false;
 	auto fontQueries = false;
 	auto envQueries = false;
+	auto predefinedCache = false;
 	for (auto i = 1; i < argc; ++i) {
 		const auto arg = std::string(argv[i]);
 		if (arg == "--digest") {
@@ -460,6 +462,8 @@ int main(int argc, char *argv[]) {
 			fontQueries = true;
 		} else if (arg == "--env-queries") {
 			envQueries = true;
+		} else if (arg == "--predefined-cache") {
+			predefinedCache = true;
 		} else if (arg == "--dump-tables") {
 			tables = true;
 		} else if (arg == "--bench" && i + 1 < argc) {
@@ -480,6 +484,10 @@ int main(int argc, char *argv[]) {
 	}
 	if (tables) {
 		oracle::DumpTables(std::cout);
+		return 0;
+	}
+	if (predefinedCache) {
+		oracle::PredefinedCache(std::cout);
 		return 0;
 	}
 

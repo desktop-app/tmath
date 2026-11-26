@@ -1,0 +1,12 @@
+scripts-32k	error	Problem with command displaystyle at position 0:32781		cbf29ce484222325 ops=0 boxes=0 measures=0
+frac-flat-32k	ok		5565950 1838 704 0.61697495 0 0 0 0	46ae5d7fa3133206 ops=40962 boxes=0 measures=0
+sqrt-nest-40x	error	Problem with command displaystyle at position 0:32781		cbf29ce484222325 ops=0 boxes=0 measures=0
+frac-nest-40x	error	Problem with command displaystyle at position 0:32781		cbf29ce484222325 ops=0 boxes=0 measures=0
+matrix-100x150	ok		233769 88179 43834 0.502897501 0 0 0 0	9f83cf036feae47c ops=75005 boxes=0 measures=0
+matrix-frac-60x30	ok		54899 137015 68252 0.501864731 0 0 0 0	081945c32f72900b ops=22501 boxes=0 measures=0
+macro-expand	error	Formula goes over a limit!		cbf29ce484222325 ops=0 boxes=0 measures=0
+text-cyr-32k	error	Formula is too large to lay out!		e18d465d21d2ec49 ops=0 boxes=0 measures=5800
+left-right-nest	ok		2114913 1025 257 0.749268293 0 0 0 0	7b76db9418636fff ops=15578 boxes=0 measures=0
+bigops	ok		4418923 3141 1347 0.571155667 0 0 0 0	3a8e2a51b740a3ee ops=46804 boxes=0 measures=0
+binom-many	ok		6409271 2459 974 0.603904009 0 0 0 0	7e3ebc7abfbd2ccb ops=36405 boxes=0 measures=0
+color-box-many	ok		1712309 2090 708 0.661244035 0 0 0 0	edbd8ac5b3edf3c4 ops=10405 boxes=0 measures=0

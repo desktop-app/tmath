@@ -62,6 +62,8 @@ pub struct Formula {
     pub text_style: &'static str,
     /// Set for an `ArrayFormula`.
     pub array: Option<Box<crate::matrix::ArrayData>>,
+    /// `_overCount`: the `\over` family commands this group took.
+    pub over_count: i32,
 }
 
 impl Formula {
@@ -95,12 +97,53 @@ impl Formula {
     }
 }
 
+/// `kMaxExpandedPerSourceChar`: the shared expansion cap grows by this much
+/// for each unit of the source.
+const MAX_EXPANDED_PER_SOURCE_CHAR: i64 = 16;
+/// `kMaxOversPerGroup`.
+const MAX_OVERS_PER_GROUP: i32 = 4;
+
+/// `failLimit()`: the error, and a note that the formula as a whole is
+/// refused once parsing ends, whatever partial mode swallows on the way.
+pub fn fail_limit(ctx: &mut Ctx, what: &str) -> Error {
+    ctx.limit_exceeded = true;
+    Error::parse(what)
+}
+
+/// `resetExpansionWork(sourceLength)`: the shared cap on expanded text.
+pub fn expanded_cap(source_length: usize) -> i64 {
+    i64::from(MAX_EXPANDED_LENGTH) + MAX_EXPANDED_PER_SOURCE_CHAR * source_length as i64
+}
+
+/// `countExpanded()`: text every expansion adds counts against one total
+/// for the whole formula.
+fn count_expanded(ctx: &mut Ctx, length: usize) -> Result<()> {
+    ctx.expanded_total += length as i64;
+    if ctx.expanded_total > ctx.expanded_cap {
+        return Err(fail_limit(ctx, "Formula expands too much!"));
+    }
+    Ok(())
+}
+
+/// `countParseWork()`.
+pub fn count_parse_work(ctx: &mut Ctx, amount: i64) -> Result<()> {
+    ctx.expansion_work += amount;
+    if ctx.expansion_work > MAX_EXPANSION_WORK {
+        return Err(fail_limit(ctx, "Formula expands too much!"));
+    }
+    Ok(())
+}
+
+fn is_command_letter(c: u16) -> bool {
+    is_ascii_alpha(c) || c == u16::from(b'@')
+}
+
 /// Runs `f` one parse level deeper: `ParseDepthGuard`.
 pub fn with_depth<T>(ctx: &mut Ctx, f: impl FnOnce(&mut Ctx) -> Result<T>) -> Result<T> {
     ctx.parse_depth += 1;
     if ctx.parse_depth > MAX_PARSE_DEPTH {
         ctx.parse_depth -= 1;
-        return Err(Error::parse("Formula nesting is too deep!"));
+        return Err(fail_limit(ctx, "Formula nesting is too deep!"));
     }
     let result = f(ctx);
     ctx.parse_depth -= 1;
@@ -111,7 +154,7 @@ pub fn with_depth<T>(ctx: &mut Ctx, f: impl FnOnce(&mut Ctx) -> Result<T>) -> Re
 fn count_expansion(ctx: &mut Ctx, length: i32) -> Result<()> {
     ctx.expansion_work += i64::from(length);
     if ctx.expansion_work > MAX_EXPANSION_WORK {
-        return Err(Error::parse("Formula expands too much!"));
+        return Err(fail_limit(ctx, "Formula expands too much!"));
     }
     Ok(())
 }
@@ -308,8 +351,14 @@ impl Parser {
         a
     }
 
-    pub fn pop_formula_atom(&mut self) -> Option<AtomId> {
-        self.formula.root.take()
+    /// `popFormulaAtom()`: TeX allows one `\over` per group, and each more
+    /// nests all the ones before it, so a group takes at most four.
+    pub fn pop_formula_atom(&mut self, ctx: &mut Ctx) -> Result<Option<AtomId>> {
+        self.formula.over_count += 1;
+        if self.formula.over_count > MAX_OVERS_PER_GROUP {
+            return Err(fail_limit(ctx, "Formula nesting is too deep!"));
+        }
+        Ok(self.formula.root.take())
     }
 
     pub fn add_atom(&mut self, ctx: &mut Ctx, atom: Option<AtomId>) {
@@ -479,7 +528,8 @@ impl Parser {
                     let row_end = self.pos < self.len && self.at(self.pos) == ESCAPE;
                     let cr = self.pos < self.len - 1
                         && self.at(self.pos) == u16::from(b'c')
-                        && self.at(self.pos + 1) == u16::from(b'r');
+                        && self.at(self.pos + 1) == u16::from(b'r')
+                        && (self.pos + 2 >= self.len || !is_command_letter(self.at(self.pos + 2)));
                     if (row_end || cr) && ogroup == 1 {
                         ogroup -= 1;
                         self.pos -= 1;
@@ -767,9 +817,10 @@ impl Parser {
             count_expansion(ctx, self.len)?;
             let ret = macros::invoke(self, ctx, &mac, &mut args)?;
             let replacement = args.last().cloned().unwrap_or_default();
+            count_expanded(ctx, replacement.len())?;
             self.insert(self.spos, self.pos, &replacement)?;
             if self.len > MAX_EXPANDED_LENGTH {
-                return Err(Error::parse("Formula expands too much!"));
+                return Err(fail_limit(ctx, "Formula expands too much!"));
             }
             return Ok(ret);
         }
@@ -873,7 +924,7 @@ impl Parser {
                 return Ok(inner.root);
             }
             if ch == ESCAPE {
-                let atom = self.process_escape(ctx)?;
+                let atom = with_depth(ctx, |ctx| self.process_escape(ctx))?;
                 if self.insertion {
                     self.insertion = false;
                     continue;
@@ -994,6 +1045,7 @@ impl Parser {
         args[0] = cmd.to_vec();
         let result = macros::invoke(self, ctx, &mac, args).and_then(|_| {
             let replacement = args.last().cloned().unwrap_or_default();
+            count_expanded(ctx, replacement.len())?;
             wstr::replace(
                 &mut self.latex,
                 i64::from(*pos),
@@ -1014,7 +1066,7 @@ impl Parser {
         self.len = self.latex.len() as i32;
         self.pos = *pos;
         if self.len > MAX_EXPANDED_LENGTH {
-            return Err(Error::parse("Formula expands too much!"));
+            return Err(fail_limit(ctx, "Formula expands too much!"));
         }
         Ok(())
     }
@@ -1068,7 +1120,7 @@ impl Parser {
         self.len = self.latex.len() as i32;
         self.pos = *pos;
         if self.len > MAX_EXPANDED_LENGTH {
-            return Err(Error::parse("Formula expands too much!"));
+            return Err(fail_limit(ctx, "Formula expands too much!"));
         }
         Ok(())
     }
@@ -1518,6 +1570,21 @@ pub fn predefined_formula(ctx: &mut Ctx, name: &[u16]) -> Result<Option<AtomId>>
     else {
         return Err(Error::formula_not_found(&text));
     };
+    if !ctx.predefined_uncached.contains(name) {
+        // `Formula::_cachePredefined()`: the C++ parses each predefined
+        // formula once when it starts, with no formula's state around it, and
+        // keeps the ones whose root is not a row.
+        let saved = ctx.enter_startup();
+        let result = parse_plain(ctx, w(tables::PREDEFINED_FORMULAS[index].1));
+        ctx.leave_startup(saved);
+        if let Ok(formula) = result
+            && !formula.root.is_some_and(|r| ctx.get(r).is_row())
+        {
+            ctx.predefined.insert(name.to_vec(), formula.root);
+            return Ok(formula.root);
+        }
+        ctx.predefined_uncached.insert(name.to_vec());
+    }
     let formula = parse_plain(ctx, w(tables::PREDEFINED_FORMULAS[index].1))?;
     let root = formula.root;
     if !root.is_some_and(|r| ctx.get(r).is_row()) {

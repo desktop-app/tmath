@@ -21,6 +21,22 @@ const PLAIN: i32 = 0;
 const BOLD: i32 = 1;
 const ITALIC: i32 = 2;
 
+/// `kMaxScriptsLayoutDepth`.
+const MAX_SCRIPTS_LAYOUT_DEPTH: i32 = 96;
+
+/// `ScriptsLayoutGuard`: chains nested in wrappers add up, so scripts and
+/// big operator layout counts its own depth.
+fn scripts_layout_guard<T>(ctx: &mut Ctx, f: impl FnOnce(&mut Ctx) -> Result<T>) -> Result<T> {
+    ctx.scripts_layout_depth += 1;
+    if ctx.scripts_layout_depth > MAX_SCRIPTS_LAYOUT_DEPTH {
+        ctx.scripts_layout_depth -= 1;
+        return Err(Error::parse("Formula nesting is too deep!"));
+    }
+    let result = f(ctx);
+    ctx.scripts_layout_depth -= 1;
+    result
+}
+
 pub(crate) fn null_atom() -> Error {
     Error::invalid_state("A required atom is missing.")
 }
@@ -139,12 +155,14 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
         }
         AtomKind::Row { .. } => row_box(ctx, id, env),
         AtomKind::Space(data) => space_box(ctx, &data, env),
-        AtomKind::Scripts { .. } => scripts_box(ctx, id, env),
+        AtomKind::Scripts { .. } => scripts_layout_guard(ctx, |ctx| scripts_box(ctx, id, env)),
         AtomKind::CumulativeScripts { base, sub, sup } => {
             let temp = new_scripts(ctx, base, Some(sub), Some(sup), Alignment::Left)?;
             scripts_box(ctx, temp, env)
         }
-        AtomKind::BigOperator { .. } => big_operator_box(ctx, id, env),
+        AtomKind::BigOperator { .. } => {
+            scripts_layout_guard(ctx, |ctx| big_operator_box(ctx, id, env))
+        }
         AtomKind::Fraction(data) => fraction_box(ctx, &data, env),
         AtomKind::Style { style, at } => {
             let previous = env.style;

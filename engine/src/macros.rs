@@ -360,7 +360,7 @@ fn fraction(tp: &mut Parser, ctx: &mut Ctx, args: &Args) -> Result<Option<AtomId
 }
 
 fn over(tp: &mut Parser, ctx: &mut Ctx, rule: bool) -> Result<Option<AtomId>> {
-    let num = tp.pop_formula_atom();
+    let num = tp.pop_formula_atom(ctx)?;
     let text = tp.get_over_argument()?;
     let den = parse_arg(ctx, tp, text, false)?;
     if num.is_none() || den.is_none() {
@@ -904,7 +904,7 @@ fn call(
                 "bangle" => ("langle", "rangle"),
                 _ => ("lbrace", "rbrace"),
             };
-            let num = tp.pop_formula_atom();
+            let num = tp.pop_formula_atom(ctx)?;
             let text = tp.get_over_argument()?;
             let den = parse_arg(ctx, tp, text, false)?;
             if num.is_none() || den.is_none() {
@@ -931,7 +931,7 @@ fn call(
             Ok(Some(new_fenced(ctx, Some(f), Some(l), Some(r))))
         }
         "above" => {
-            let num = tp.pop_formula_atom();
+            let num = tp.pop_formula_atom(ctx)?;
             let (unit, value) = tp.get_length()?;
             if unit == Unit::None {
                 return Err(Error::parse("Missing dimension for \\above!"));
@@ -2148,7 +2148,7 @@ fn frac_with_delims(
     rule: bool,
     has_length: bool,
 ) -> Result<Option<AtomId>> {
-    let num = tp.pop_formula_atom();
+    let num = tp.pop_formula_atom(ctx)?;
     let (mut unit, mut value) = (Unit::Em, 0.0);
     if has_length {
         (unit, value) = tp.get_length()?;

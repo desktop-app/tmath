@@ -25,6 +25,8 @@ pub mod wstr;
 mod env_tests;
 #[cfg(test)]
 mod font_tests;
+#[cfg(test)]
+mod predefined_tests;
 
 use atoms::{AtomKind, Ctx};
 use boxes::{Alignment, Boxes, Measure};
@@ -105,9 +107,13 @@ fn layout_in(
         Alignment::Center
     };
 
+    ctx.expanded_cap = parser::expanded_cap(tex.len());
     let mut parser = Parser::new(ctx, true, tex.to_vec(), Formula::default(), true, true)?;
     if !tex.is_empty() {
         parser.parse(ctx)?;
+    }
+    if ctx.limit_exceeded {
+        return Err(Error::parse("Formula goes over a limit!"));
     }
     let root = match parser.formula.root {
         Some(root) => root,

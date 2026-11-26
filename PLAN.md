@@ -216,7 +216,7 @@ Each milestone lands on its own, with its exit check green.
 | | Work | Exit check |
 |---|---|---|
 | M0 | Oracle CLI, recording backend, samples corpus, baseline timing | **done**: 32/32 samples recorded; baseline above |
-| M1 | Driver (crash and hang isolation per record), golden digests, `compare/` tool, corpora C1-C3 | goldens for all corpora; list of oracle-crash inputs |
+| M1 | Runner with crash and hang isolation per record (`tools/oracle_run.py`), golden digests, C1 generator (`tools/corpus_features.py`). C3 records are added by the milestone that ports each fix's area. `compare/` comes with M2, when there is engine output to compare | **done** for C1: 9662 records, goldens in `corpus/golden/features.tsv` (9612 ok, 50 errors, no oracle crashes or hangs) |
 | M2 | Cargo workspace, engine crate with `#![forbid(unsafe_code)]`, tables generated from the C++ sources by a converter | table dumps equal, exhaustively |
 | M3 | TeX font engine, environment (styles, sizes), glue, units | font-query dumps equal, exhaustively |
 | M4 | Box types, draw walk to display list, `TeXRender` metrics; parser core with basic atoms (chars, symbols, groups, scripts, fractions, spaces, styles) | "basic" slice of C1+C2 matches 100% |

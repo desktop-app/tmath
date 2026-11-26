@@ -238,6 +238,11 @@ def gen_state():
     add("63/vtab-origin", "\\rotatebox[origin=\x0bcc]{90}{x}")
     add("63/unicode-command", "\\newcommand{\\\u00e9}{x}\\\u00e9")
     add("63/unicode-roman", "\\roman{\u0661\u0662}")
+    # \debug and \undebug exist only in GRAPHICS_DEBUG builds, which tdesktop
+    # does not make, so they are unknown commands.
+    add("debug/on", "\\debug x^2+\\frac{a}{b}")
+    add("debug/on-then-off", "\\debug x\\undebug")
+    add("debug/off", "\\undebug y")
 
 
 def gen_budget():

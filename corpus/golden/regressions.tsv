@@ -410,6 +410,9 @@ c3/84/font	ok		2106 713 1 0.998597503 0 0 0 0	fd08a173c4299231 ops=17 boxes=0 me
 c3/63/vtab-origin	ok		442 588 74 0.87414968 0 0 0 0	2fa6dbfc1e88e326 ops=10 boxes=0 measures=0
 c3/63/unicode-command	error	Problem with command newcommand at position 0:17		cbf29ce484222325 ops=0 boxes=0 measures=0
 c3/63/unicode-roman	ok		1 1 1 0 0 0 0 0	98adaddd75d1b0f0 ops=4 boxes=0 measures=0
+c3/debug/on	ok		6170 1838 704 0.61697495 0 0 0 0	f8e3cdc2609b5fdf ops=50 boxes=0 measures=0
+c3/debug/on-then-off	ok		8096 1025 257 0.749268293 0 0 0 0	3a66301bfd3f2e36 ops=58 boxes=0 measures=0
+c3/debug/off	ok		4827 1025 257 0.749268293 0 0 0 0	2497a86fe5959635 ops=36 boxes=0 measures=0
 c3/38/chars/240	ok		14041791 442 1 0.997737527 0 0 0 0	b471d0f691b47238 ops=72005 boxes=0 measures=0
 c3/38/chars/245	error	Formula expands too much!		cbf29ce484222325 ops=0 boxes=0 measures=0
 c3/38/chars/250	error	Formula expands too much!		cbf29ce484222325 ops=0 boxes=0 measures=0

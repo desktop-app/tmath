@@ -101,3 +101,8 @@ pub fn char_message(c: u16) -> String {
         "?".to_owned()
     }
 }
+
+/// `wide2utf8` bytes.
+pub fn narrow_bytes(s: &[u16]) -> Vec<u8> {
+    crate::env::wide_to_utf8(s)
+}

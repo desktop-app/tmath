@@ -6,11 +6,15 @@
 //! back to the built-ins before every formula.
 
 use crate::atoms::{AtomId, AtomKind, Ctx, LimitsType, SpaceData};
+use crate::boxes::cmax;
+use crate::boxes::cmin;
+use crate::draw::{BLACK, TRANSPARENT};
 use crate::enums::{AtomType, SpaceType, Unit};
 use crate::error::{Error, Result};
 use crate::font::TexStyle;
 use crate::layout::new_fraction;
-use crate::parser::{Args, Parser, new_cumulative_scripts, parse_arg, parse_sub};
+use crate::numparse::{read_float, read_hex_u32};
+use crate::parser::{Args, Parser, new_color, new_cumulative_scripts, parse_arg, parse_sub};
 use crate::tables::{self, MacroKind};
 use crate::wstr::{self, w};
 
@@ -560,6 +564,67 @@ fn call(
             let at = ctx.atom(AtomKind::Roman { base });
             Ok(Some(ctx.atom(AtomKind::TextCircled { at })))
         }
+        "color" => {
+            if tp.is_array_mode() {
+                return Err(unsupported(ctx, "\\color in arrays"));
+            }
+            Ok(None)
+        }
+        "textcolor" | "bgcolor" => {
+            let a = parse_arg(ctx, tp, args[2].clone(), true)?;
+            let c = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            let (bg, fg) = if name == "bgcolor" {
+                (c, TRANSPARENT)
+            } else {
+                (TRANSPARENT, c)
+            };
+            Ok(Some(new_color(ctx, a, bg, fg)))
+        }
+        "colorbox" => {
+            let c = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            let a = parse_arg(ctx, tp, args[2].clone(), true)?;
+            Ok(Some(new_fbox(ctx, a, c, c)))
+        }
+        "fcolorbox" => {
+            let f = color_of(ctx, &wstr::narrow_bytes(&args[2]));
+            let b = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            let a = parse_arg(ctx, tp, args[3].clone(), true)?;
+            Ok(Some(new_fbox(ctx, a, f, b)))
+        }
+        "fbox" => {
+            let a = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_fbox(ctx, a, TRANSPARENT, TRANSPARENT)))
+        }
+        "definecolor" => define_color(ctx, args),
+        "^" | "'" | "\"" | "`" | "=" | "." | "~" | "u" | "v" | "H" | "r" | "U" | "t" => {
+            let accent = match name {
+                "~" => "tilde",
+                "'" => "acute",
+                "^" => "hat",
+                "\"" => "ddot",
+                "`" => "grave",
+                "=" => "bar",
+                "." => "dot",
+                "u" => "breve",
+                "v" => "check",
+                "H" => "doubleacute",
+                "t" => "tie",
+                "r" => "mathring",
+                _ => "cyrbreve",
+            };
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_accented_named(ctx, base, accent)?))
+        }
+        "hat" | "widehat" | "tilde" | "acute" | "grave" | "ddot" | "cyrddot" | "mathring"
+        | "bar" | "breve" | "check" | "vec" | "dot" | "widetilde" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_accented_named(ctx, base, name)?))
+        }
+        "accent" | "grkaccent" => {
+            let base = parse_arg(ctx, tp, args[2].clone(), false)?;
+            let accent = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_accented(ctx, base, accent, name == "accent")?))
+        }
         "joinrel" => {
             let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
             Ok(Some(new_typed(
@@ -625,4 +690,228 @@ fn left(tp: &mut Parser, ctx: &mut Ctx, args: &mut Args) -> Result<Option<AtomId
     ctx.row_add(row, inner);
     ctx.row_add(row, r);
     Ok(Some(row))
+}
+
+/// `FBoxAtom(base, bg, line)`.
+fn new_fbox(ctx: &mut Ctx, base: Option<AtomId>, bg: u32, line: u32) -> AtomId {
+    let (base, atom_type) = match base {
+        None => (ctx.new_row(), AtomType::Ordinary),
+        Some(b) => (b, ctx.get(b).atom_type),
+    };
+    let id = ctx.atom(AtomKind::FBox { base, bg, line });
+    ctx.get_mut(id).atom_type = atom_type;
+    id
+}
+
+/// Classic-locale `isspace` for the `char`s of a narrow string.
+fn is_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t'..=b'\r')
+}
+
+/// `trim()`.
+fn trim(s: &[u8]) -> &[u8] {
+    let start = s.iter().position(|&b| !is_space(b)).unwrap_or(s.len());
+    let end = s
+        .iter()
+        .rposition(|&b| !is_space(b))
+        .map_or(start, |e| e + 1);
+    &s[start..end.max(start)]
+}
+
+/// `StrTokenizer(str, delimiters)`: the tokens between delimiters.
+fn tokens<'a>(s: &'a [u8], delimiters: &[u8]) -> Vec<&'a [u8]> {
+    s.split(|b| delimiters.contains(b))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// `colorComponent()`.
+fn color_component(value: f32) -> u32 {
+    let scaled = value * 255.0;
+    if !(scaled > 0.0) {
+        return 0;
+    }
+    if !(scaled < 255.0) {
+        return 255;
+    }
+    scaled as u32
+}
+
+/// `rgb(float, float, float)`.
+fn rgb(r: f32, g: f32, b: f32) -> u32 {
+    (255 << 24) | (color_component(r) << 16) | (color_component(g) << 8) | color_component(b)
+}
+
+/// `decode()`: `#RRGGBB` or `#AARRGGBB`.
+fn decode(s: &[u8]) -> u32 {
+    if s.first() != Some(&b'#') {
+        return BLACK;
+    }
+    let mut c = read_hex_u32(&s[1..]);
+    if s.len() == 7 {
+        c |= 0xFF00_0000;
+    } else if s.len() != 9 {
+        return BLACK;
+    }
+    c
+}
+
+fn float_of(ctx: &mut Ctx, s: &[u8]) -> f32 {
+    let f = read_float(s);
+    if f.unsupported {
+        unsupported(ctx, "hexadecimal floats");
+    }
+    f.value
+}
+
+/// `ColorAtom::getColor()`: a name, `#hex`, hex digits, a gray level, or
+/// RGB or CMYK components.
+pub fn color_of(ctx: &mut Ctx, name: &[u8]) -> u32 {
+    if name.is_empty() {
+        return BLACK;
+    }
+    let name = trim(name).to_ascii_lowercase();
+    let original = trim(name.as_slice());
+    if original.first() == Some(&b'#') {
+        return decode(original);
+    }
+    if !name.contains(&b',') {
+        let key = String::from_utf8_lossy(&name).into_owned();
+        if let Some(&c) = ctx.user_colors.get(&key) {
+            return c;
+        }
+        if let Ok(i) = tables::COLORS.binary_search_by(|e| e.0.as_bytes().cmp(name.as_slice())) {
+            return tables::COLORS[i].1;
+        }
+        if !name.contains(&b'.') {
+            let mut hex = vec![b'#'];
+            hex.extend_from_slice(&name);
+            return decode(&hex);
+        }
+        let x = float_of(ctx, &name);
+        if x != 0.0 {
+            let g = cmin(1.0, cmax(x, 0.0));
+            return rgb(g, g, g);
+        }
+        return BLACK;
+    }
+    let parts = tokens(&name, b";,");
+    match parts.len() {
+        3 => {
+            let r = float_of(ctx, trim(parts[0]));
+            let g = float_of(ctx, trim(parts[1]));
+            let b = float_of(ctx, trim(parts[2]));
+            if r == 0.0 && g == 0.0 && b == 0.0 {
+                return BLACK;
+            }
+            let whole = |v: f32| v.is_finite() && v == v.floor();
+            if whole(r) && whole(g) && whole(b) && parts.iter().all(|p| !trim(p).contains(&b'.')) {
+                let c = |v: f32| cmin(255.0, cmax(0.0, v)) as i32 as u32;
+                return (255 << 24) | (c(r) << 16) | (c(g) << 8) | c(b);
+            }
+            rgb(
+                cmin(1.0, cmax(0.0, r)),
+                cmin(1.0, cmax(0.0, g)),
+                cmin(1.0, cmax(0.0, b)),
+            )
+        }
+        4 => {
+            let v: Vec<f32> = parts.iter().map(|p| float_of(ctx, trim(p))).collect();
+            if v.iter().all(|&x| x == 0.0) {
+                return BLACK;
+            }
+            let c: Vec<f32> = v.iter().map(|&x| cmin(1.0, cmax(0.0, x))).collect();
+            let kk = 1.0 - c[3];
+            rgb(kk * (1.0 - c[0]), kk * (1.0 - c[1]), kk * (1.0 - c[2]))
+        }
+        _ => BLACK,
+    }
+}
+
+/// `macro_definecolor`.
+fn define_color(ctx: &mut Ctx, args: &mut Args) -> Result<Option<AtomId>> {
+    let cs = wstr::narrow_bytes(&args[3]);
+    let model = args[2].clone();
+    let c = if wstr::eq(&model, "gray") {
+        let f = float_of(ctx, &cs);
+        rgb(f, f, f)
+    } else if wstr::eq(&model, "rgb") {
+        let parts = tokens(&cs, b":,");
+        if parts.len() != 3 {
+            return Err(Error::parse(
+                "The color definition must have three components!",
+            ));
+        }
+        let r = float_of(ctx, trim(parts[0]));
+        let g = float_of(ctx, trim(parts[1]));
+        let b = float_of(ctx, trim(parts[2]));
+        rgb(r, g, b)
+    } else if wstr::eq(&model, "cmyk") {
+        let parts = tokens(&cs, b":,");
+        if parts.len() != 4 {
+            return Err(Error::parse(
+                "The color definition must have four components!",
+            ));
+        }
+        let v: Vec<f32> = parts.iter().map(|p| float_of(ctx, trim(p))).collect();
+        let k = 1.0 - v[3];
+        rgb(k * (1.0 - v[0]), k * (1.0 - v[1]), k * (1.0 - v[2]))
+    } else {
+        return Err(Error::parse("Color model is incorrect!"));
+    };
+    let name = String::from_utf8_lossy(&wstr::narrow_bytes(&args[1])).into_owned();
+    ctx.user_colors.insert(name, c);
+    Ok(None)
+}
+
+fn underbase_of(ctx: &Ctx, base: Option<AtomId>) -> Option<AtomId> {
+    match base.map(|b| &ctx.get(b).kind) {
+        Some(AtomKind::Accented { underbase, .. }) => *underbase,
+        _ => base,
+    }
+}
+
+/// `AccentedAtom(base, name)`: the accent named in the symbol table.
+fn new_accented_named(ctx: &mut Ctx, base: Option<AtomId>, name: &str) -> Result<AtomId> {
+    let accent = ctx.symbol(name)?;
+    if ctx.get(accent).atom_type != AtomType::Accent {
+        return Err(Error::new(
+            crate::error::ErrorKind::Other,
+            format!(
+                "The symbol with the name '{name}' is not defined as an accent (type='acc') in 'TeXSymbols'!"
+            ),
+        ));
+    }
+    let underbase = underbase_of(ctx, base);
+    Ok(ctx.atom(AtomKind::Accented {
+        accent,
+        acc: false,
+        change_size: true,
+        base,
+        underbase,
+    }))
+}
+
+/// `AccentedAtom(base, accent, changeSize)`: the accent given as an atom.
+fn new_accented(
+    ctx: &mut Ctx,
+    base: Option<AtomId>,
+    accent: Option<AtomId>,
+    change_size: bool,
+) -> Result<AtomId> {
+    let underbase = underbase_of(ctx, base);
+    let Some(accent) = accent.filter(|&a| matches!(ctx.get(a).kind, AtomKind::Symbol { .. }))
+    else {
+        return Err(Error::new(
+            crate::error::ErrorKind::Other,
+            "Invalid accent!",
+        ));
+    };
+    Ok(ctx.atom(AtomKind::Accented {
+        accent,
+        acc: true,
+        change_size,
+        base,
+        underbase,
+    }))
 }

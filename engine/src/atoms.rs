@@ -275,6 +275,20 @@ pub enum AtomKind {
     TextCircled {
         at: AtomId,
     },
+    /// `AccentedAtom`: `accent` is a symbol.
+    Accented {
+        accent: AtomId,
+        acc: bool,
+        change_size: bool,
+        base: Option<AtomId>,
+        underbase: Option<AtomId>,
+    },
+    /// `FBoxAtom`: a frame, filled with `bg` unless it is transparent.
+    FBox {
+        base: AtomId,
+        bg: u32,
+        line: u32,
+    },
     /// `MiddleAtom`.
     Middle {
         base: Option<AtomId>,
@@ -341,6 +355,8 @@ pub struct Ctx<'a> {
     pub text_font: TextFont,
     /// `RowAtom::_breakEveywhere`.
     pub break_everywhere: bool,
+    /// Colors `\definecolor` added or replaced.
+    pub user_colors: BTreeMap<String, u32>,
     /// The first part of MicroTeX the formula needed that is not ported.
     pub unsupported: Option<String>,
     /// `Formula::_predefinedTeXFormulas`: the parsed predefined formulas
@@ -368,6 +384,7 @@ impl<'a> Ctx<'a> {
             err_if_conflict: true,
             text_font: TextFont::new("Serif", 0, 10.0),
             break_everywhere: false,
+            user_colors: BTreeMap::new(),
             unsupported: None,
             predefined: HashMap::new(),
             inserted_formula_mappings: HashSet::new(),

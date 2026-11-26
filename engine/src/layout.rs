@@ -276,6 +276,28 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
             middle,
         } => fenced_box(ctx, base, left, right, &middle, env),
         AtomKind::NthRoot { base, root } => nth_root_box(ctx, base, root, env),
+        AtomKind::Accented {
+            accent,
+            acc,
+            change_size,
+            base,
+            underbase,
+        } => accented_box(ctx, accent, acc, change_size, base, underbase, env),
+        AtomKind::FBox { base, bg, line } => {
+            let b = create_box(ctx, base, env)?;
+            let drt = env
+                .font
+                .style_param(&env.settings, "defaultrulethickness", env.style);
+            let space = 0.65 * unit_factor(Unit::Em, env);
+            if crate::draw::is_transparent(bg) {
+                let t = crate::draw::TRANSPARENT;
+                return ctx
+                    .boxes
+                    .framed_box(b, drt, space, t, t, crate::boxes::FrameShape::Square);
+            }
+            ctx.boxes
+                .framed_box(b, drt, space, line, bg, crate::boxes::FrameShape::Square)
+        }
         AtomKind::TextCircled { at } => {
             let bigcirc = ctx.symbol("bigcirc")?;
             let circle = create_box(ctx, bigcirc, env)?;
@@ -825,7 +847,12 @@ fn scripts_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<BoxId
     let param = |name: &str, s: TexStyle| font.style_param(&settings, name, s);
 
     let base_node = ctx.get(base).clone();
-    if let AtomKind::Symbol { name, .. } = base_node.kind
+    if let AtomKind::Accented { base: inner, .. } = base_node.kind {
+        let inner = inner.ok_or_else(null_atom)?;
+        let b = create_box(ctx, inner, &mut env.cramp_style())?;
+        shift_up = ctx.boxes.height(b) - param("supdrop", sup_style.style);
+        shift_down = ctx.boxes.depth(b) + param("subdrop", sub_style.style);
+    } else if let AtomKind::Symbol { name, .. } = base_node.kind
         && base_node.atom_type == AtomType::BigOperator
     {
         let mut c = symbol_char(env, name, style)?;
@@ -1497,4 +1524,97 @@ fn nth_root_box(ctx: &mut Ctx, base: AtomId, root: AtomId, env: &mut Environment
     ctx.boxes.hbox_add(res, negkern)?;
     ctx.boxes.hbox_add(res, square_root)?;
     Ok(res)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn accented_box(
+    ctx: &mut Ctx,
+    accent: AtomId,
+    acc: bool,
+    change_size: bool,
+    base: Option<AtomId>,
+    underbase: Option<AtomId>,
+    env: &mut Environment,
+) -> Result<BoxId> {
+    let style = env.style;
+    let settings = env.settings;
+    let font = env.font;
+    let mut b = match base {
+        None => ctx.boxes.strut(0.0, 0.0, 0.0, 0.0)?,
+        Some(base) => create_box(ctx, base, &mut env.cramp_style())?,
+    };
+    let u = ctx.boxes.width(b);
+    let mut s = 0.0;
+    if let Some(under) = underbase
+        && ctx.get(under).is_char_symbol()
+    {
+        let cf = char_font_of(ctx, under, env)?;
+        s = font.skew(&settings, cf, style);
+    }
+    let name = symbol_name(ctx, accent)?;
+    let mut ch = symbol_char(env, name, style)?;
+    while font.has_next_larger(&ch) {
+        let larger = font.next_larger(&settings, &ch, style);
+        if larger.metrics.width <= u {
+            ch = larger;
+        } else {
+            break;
+        }
+    }
+    let ec = -unit_factor(Unit::Mu, env);
+    let delta = if acc {
+        ec
+    } else {
+        crate::boxes::cmin(
+            ctx.boxes.height(b),
+            font.x_height(&settings, style, ch.font),
+        )
+    };
+    let vbox = ctx.boxes.vbox()?;
+    let italic = ch.metrics.italic;
+    let mut cb = ctx.boxes.char_box(&ch)?;
+    if acc {
+        cb = if change_size {
+            create_box(ctx, accent, &mut env.sub_style())?
+        } else {
+            create_box(ctx, accent, env)?
+        };
+    }
+    let y = if italic.abs() > PREC {
+        let s = ctx.boxes.strut(-italic, 0.0, 0.0, 0.0)?;
+        let hbox = ctx.boxes.hbox_of(s)?;
+        ctx.boxes.hbox_add(hbox, cb)?;
+        hbox
+    } else {
+        cb
+    };
+    let y_width = ctx.boxes.width(y);
+    let diff = (u - y_width) / 2.0;
+    ctx.boxes.get_mut(y).shift = s + if diff > 0.0 { diff } else { 0.0 };
+    if diff < 0.0 {
+        b = ctx.boxes.hbox_aligned(b, y_width, Alignment::Center)?;
+    }
+    ctx.boxes.vbox_add(vbox, y)?;
+    let kern = if change_size {
+        -delta
+    } else {
+        -ctx.boxes.width(b)
+    };
+    let k = ctx.boxes.strut(0.0, kern, 0.0, 0.0)?;
+    ctx.boxes.vbox_add(vbox, k)?;
+    ctx.boxes.vbox_add(vbox, b)?;
+    let v = ctx.boxes.get(vbox);
+    let total = v.height + v.depth;
+    let d = ctx.boxes.depth(b);
+    let v = ctx.boxes.get_mut(vbox);
+    v.depth = d;
+    v.height = total - d;
+    if diff < 0.0 {
+        let s = ctx.boxes.strut(diff, 0.0, 0.0, 0.0)?;
+        let hb = ctx.boxes.hbox_of(s)?;
+        ctx.boxes.hbox_add(hb, vbox)?;
+        ctx.boxes.get_mut(hb).width = u;
+        return Ok(hb);
+    }
+    Ok(vbox)
 }

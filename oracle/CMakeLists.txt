@@ -23,6 +23,7 @@ add_executable(microtex_oracle
     oracle_main.cpp
     dump_tables.cpp
     dump_tables.h
+    env_queries.cpp
     recording.cpp
     recording.h
     ${microtex_src}/latex.cpp

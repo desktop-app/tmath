@@ -19,6 +19,7 @@
 //   microtex_oracle --bench <repeat> < corpus.jsonl
 //   microtex_oracle --dump-tables
 //   microtex_oracle --font-queries
+//   microtex_oracle --env-queries
 #include "dump_tables.h"
 #include "recording.h"
 
@@ -448,6 +449,7 @@ int main(int argc, char *argv[]) {
 	auto bench = 0;
 	auto tables = false;
 	auto fontQueries = false;
+	auto envQueries = false;
 	for (auto i = 1; i < argc; ++i) {
 		const auto arg = std::string(argv[i]);
 		if (arg == "--digest") {
@@ -456,6 +458,8 @@ int main(int argc, char *argv[]) {
 			boxes = false;
 		} else if (arg == "--font-queries") {
 			fontQueries = true;
+		} else if (arg == "--env-queries") {
+			envQueries = true;
 		} else if (arg == "--dump-tables") {
 			tables = true;
 		} else if (arg == "--bench" && i + 1 < argc) {
@@ -468,6 +472,10 @@ int main(int argc, char *argv[]) {
 	tex::LaTeX::initBundled();
 	if (fontQueries) {
 		oracle::FontQueries(std::cout);
+		return 0;
+	}
+	if (envQueries) {
+		oracle::EnvQueries(std::cout);
 		return 0;
 	}
 	if (tables) {

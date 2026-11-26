@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "tmath"
 version = "0.1.0"
+
+[[package]]
+name = "tmath-compare"
+version = "0.1.0"
+dependencies = [
+ "tmath",
+]

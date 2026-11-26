@@ -1,0 +1,18 @@
+[package]
+name = "tmath-compare"
+description = "Runs the engine over a corpus and prints what the C++ oracle prints"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tmath_compare"
+path = "src/main.rs"
+
+[dependencies]
+tmath = { path = "../engine" }
+
+[lints.rust]
+unsafe_code = "forbid"

@@ -105,6 +105,17 @@ Known hazards that the port has to mirror deliberately:
 - Upstream quirks in the draw walk, such as `RuleBox::draw` keeping
   `oldStroke` as a reference so its "restore" re-sets the new stroke, and
   `Insets(t, l, b, r)` assigning `left = t`. See the classification below.
+- Shared and mutated objects: atoms and boxes are `shared_ptr`s that get
+  appended twice, copied shallowly by `privateCopy` and changed during layout
+  (`ScriptsAtom` keeps the phantom base it makes, `BigOperatorAtom` keeps the
+  base it unwraps on some paths). The engine keeps atoms and boxes in
+  per-formula arenas addressed by index, which reproduces all of that and
+  never recurses on drop.
+- Process-wide state the C++ does not reset between formulas, and where
+  results can depend on earlier formulas: the predefined-formula and symbol
+  caches, and `operator[]` lookups that insert, such as U+03A2 in math mode
+  adding an empty entry to `_symbolFormulaMappings`. The engine scopes all of
+  it to one formula, which is what a fresh process does.
 
 ## Engine interface
 
@@ -183,9 +194,12 @@ formula for compact goldens, and `--bench N` times parse plus layout.
   mappings, units, colors).
 - **Font queries:** every character by style through `getChar`, next-larger
   chains, extensions, kerns and ligatures.
-- **End to end:** `compare/` runs the engine over a corpus and diffs it against
-  oracle dumps. It reports the first divergence with box-tree context, and the
-  maximum ulp distance for float mismatches.
+- **End to end:** `compare/` (`tmath_compare`) reads a corpus and prints what
+  the oracle prints, so `tools/oracle_run.py --oracle tmath_compare` writes a
+  table in the golden's format and `tools/compare_golden.py` diffs the two.
+  Formulas that need a part not ported yet report `unsupported` and are
+  counted by what they need. `cargo test` replays the features corpus against
+  its golden and fails on any formula that renders differently.
 - **Safety:** zero panics over all corpora and fuzzing; worst case at every
   limit on a small-stack thread; time and peak-memory bounds per formula, with
   a counting allocator in the test binary only.
@@ -219,7 +233,7 @@ Each milestone lands on its own, with its exit check green.
 | M1 | Runner with crash and hang isolation per record (`tools/oracle_run.py`), golden digests, C1 generator (`tools/corpus_features.py`). C3 records are added by the milestone that ports each fix's area. `compare/` comes with M2, when there is engine output to compare | **done** for C1: 9662 records, goldens in `corpus/golden/features.tsv` (9612 ok, 50 errors, no oracle crashes or hangs) |
 | M2 | Cargo workspace, engine crate with `#![forbid(unsafe_code)]`. Tables are generated (`tools/gen_tables.py`) from the oracle's `--dump-tables`, which reads MicroTeX's tables after init through `friend struct OracleAccess` on the fork's `tmath-oracle` branch. Canonical text forms (`%.9g`, UTF-16 units) live in `engine/src/text.rs` | **done**: all 7432 table lines re-dump equal to `corpus/golden/tables.txt` |
 | M3 | TeX font engine, environment (styles, sizes), glue, units, length parsing. The oracle answers `--font-queries` and `--env-queries`; the engine replays the same questions | **done**: all 66503 font queries and all 23437 environment, unit, glue and length answers equal, including MSVC's stream float parsing and the lone-surrogate handling of `wide2utf8` |
-| M4 | Box types, draw walk to display list, `TeXRender` metrics; parser core with basic atoms (chars, symbols, groups, scripts, fractions, spaces, styles) | "basic" slice of C1+C2 matches 100% |
+| M4 | Box types, draw walk to display list, `TeXRender` metrics; parser core with basic atoms (chars, symbols, groups, scripts, fractions, spaces, styles) | **in progress**: all box types, the draw walk, `TeXRender`, line breaking, the parser with preprocessing and user commands, and the basic atoms are ported. 5315 of 9662 C1 records and 6 of 32 samples match exactly; the rest report unsupported; none differ |
 | M5 | Delimiters, radicals, accents, big operators and limits, over/under, `\stackrel`, `\xrightarrow` | that slice matches 100% |
 | M6 | Text and fonts: `\text`, `\mbox`, math alphabets, colors, frames, rotate/scale/raise, rules, kerns, units, `\externalfont`, text-run measurement | that slice matches 100% |
 | M7 | Arrays and environments: array and the matrix family, cases, aligned, gathered, alignedat, multicolumn and multirow, rules, column specs, `@{}`, `\newcolumntype`, smallmatrix, `\hdotsfor` | that slice matches 100% |

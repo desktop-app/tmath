@@ -173,6 +173,17 @@ def gen_values():
     for i, tex in enumerate(("a\\above b", "a\\above", "a\\abovewithdelims()b", "a\\kern",
                              "a\\kern b", "a\\above 1em b", "a\\abovewithdelims() 2pt b")):
         add(f"25/{i}", tex)
+    # valueof() reads floats as MSVC's stream does, hexadecimal ones too:
+    # correctly rounded, with an exponent marker and no digits failing to 0.
+    hex_values = ("0x2", "0x1.8p1", "0x1e1", "0x0.1", "-0x2", " 0x3", "+0x3", "0x", "0xg", "0x.",
+                  "0x1p", "0x1p+", "0x1.000001p0", "0x1.000003p0", "0x1.0000011p0",
+                  "0x1.0000010000000000000000000000001p0", "0x1p-149", "0x1p-150", "0x1.8p-149",
+                  "0x1.fffffep127", "0x1.ffffffp127", "0x1p99999999999999", "0x1p-99999999999",
+                  "0x" + "f" * 40 + "p-100", "0x1.fffffe8p-127", "1e", "1e+", "1e-")
+    for i, value in enumerate(hex_values):
+        add(f"valueof/scale-{i}", "\\scalebox{" + value + "}{x}")
+        add(f"valueof/color-{i}", "\\textcolor{" + value + ",0.5,0}{x}")
+        add(f"valueof/hdots-{i}", "\\begin{matrix}aaaa&bbbb\\\\\\hdotsfor[" + value + "]{2}\\end{matrix}")
 
 
 def gen_finite():

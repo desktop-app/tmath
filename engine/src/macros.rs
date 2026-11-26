@@ -1723,12 +1723,8 @@ fn decode(s: &[u8]) -> u32 {
     c
 }
 
-fn float_of(ctx: &mut Ctx, s: &[u8]) -> f32 {
-    let f = read_float(s);
-    if f.unsupported {
-        unsupported(ctx, "hexadecimal floats");
-    }
-    f.value
+fn float_of(_ctx: &mut Ctx, s: &[u8]) -> f32 {
+    read_float(s)
 }
 
 /// `ColorAtom::getColor()`: a name, `#hex`, hex digits, a gray level, or

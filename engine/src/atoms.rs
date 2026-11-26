@@ -6,6 +6,7 @@
 //! `privateCopy` and changes some of them while laying them out.
 
 use crate::boxes::{Alignment, BoxId, Boxes, Measure};
+use crate::decor::{Frame, Rotation};
 use crate::draw::TextFont;
 use crate::enums::{AtomType, SpaceType, Unit};
 use crate::error::{Error, Result};
@@ -346,6 +347,90 @@ pub enum AtomKind {
         j: i32,
         n: i32,
     },
+    /// `VdotsAtom`.
+    Vdots,
+    /// `DdtosAtom`, or `IddotsAtom` when `iddots` is set.
+    DiagonalDots {
+        iddots: bool,
+    },
+    /// `VCenteredAtom`.
+    VCentered {
+        at: AtomId,
+    },
+    /// `MonoScaleAtom`.
+    MonoScale {
+        base: AtomId,
+        factor: f32,
+    },
+    /// `IJAtom`.
+    IJ {
+        upper: bool,
+    },
+    /// `LCaronAtom`.
+    LCaron {
+        upper: bool,
+    },
+    /// `TCaronAtom`.
+    TCaron,
+    /// `TStrokeAtom`.
+    TStroke {
+        upper: bool,
+    },
+    /// `CedillaAtom`, or `OgonekAtom` when `ogonek` is set.
+    UnderMark {
+        base: Option<AtomId>,
+        ogonek: bool,
+    },
+    /// `LapedAtom`: `kind` is `l`, `r` or anything else for centered.
+    Laped {
+        at: Option<AtomId>,
+        kind: u16,
+    },
+    /// `OverlinedAtom`.
+    Overlined {
+        base: Option<AtomId>,
+    },
+    /// `UnderlinedAtom`.
+    Underlined {
+        base: Option<AtomId>,
+    },
+    /// `StrikeThroughAtom`.
+    StrikeThrough {
+        at: Option<AtomId>,
+    },
+    /// `CancelAtom`: 0 slash, 1 backslash, 2 cross.
+    Cancel {
+        base: AtomId,
+        kind: i32,
+    },
+    /// `ReflectAtom`.
+    Reflect {
+        base: AtomId,
+    },
+    /// `RotateAtom`.
+    Rotate {
+        base: AtomId,
+        angle: f32,
+        option: Rotation,
+    },
+    /// `ResizeAtom`.
+    Resize {
+        base: AtomId,
+        w_unit: Unit,
+        w: f32,
+        h_unit: Unit,
+        h: f32,
+        keep_aspect_ratio: bool,
+    },
+    /// `SmallCapAtom`.
+    SmallCap {
+        base: Option<AtomId>,
+    },
+    /// `DoubleFramedAtom`, `ShadowAtom` and `OvalAtom`.
+    Frame {
+        base: AtomId,
+        kind: Frame,
+    },
     /// `MiddleAtom`.
     Middle {
         base: Option<AtomId>,
@@ -414,6 +499,9 @@ pub struct Ctx<'a> {
     pub break_everywhere: bool,
     /// Colors `\definecolor` added or replaced.
     pub user_colors: BTreeMap<String, u32>,
+    /// `OvalAtom::_multiplier` and `_diameter`: `\cornersize`.
+    pub oval_multiplier: f32,
+    pub oval_diameter: f32,
     /// `MatrixAtom::LINE_COLOR`: the last `\arrayrulecolor`.
     pub line_color: u32,
     /// `MatrixAtom::_colspeReplacement`: `\newcolumntype` definitions.
@@ -446,6 +534,8 @@ impl<'a> Ctx<'a> {
             text_font: TextFont::new("Serif", 0, 10.0),
             break_everywhere: false,
             user_colors: BTreeMap::new(),
+            oval_multiplier: 0.5,
+            oval_diameter: 0.0,
             line_color: crate::draw::TRANSPARENT,
             column_types: BTreeMap::new(),
             unsupported: None,
@@ -581,7 +671,9 @@ impl<'a> Ctx<'a> {
     pub fn left_type(&self, id: AtomId) -> AtomType {
         let node = self.get(id);
         match &node.kind {
-            AtomKind::Scale { base, .. } => self.left_type(*base),
+            AtomKind::Scale { base, .. }
+            | AtomKind::MonoScale { base, .. }
+            | AtomKind::Resize { base, .. } => self.left_type(*base),
             AtomKind::Color { elements, .. } | AtomKind::Phantom { elements, .. } => {
                 self.left_type(*elements)
             }
@@ -603,7 +695,9 @@ impl<'a> Ctx<'a> {
     pub fn right_type(&self, id: AtomId) -> AtomType {
         let node = self.get(id);
         match &node.kind {
-            AtomKind::Scale { base, .. } => self.right_type(*base),
+            AtomKind::Scale { base, .. }
+            | AtomKind::MonoScale { base, .. }
+            | AtomKind::Resize { base, .. } => self.right_type(*base),
             AtomKind::Color { elements, .. } | AtomKind::Phantom { elements, .. } => {
                 self.right_type(*elements)
             }

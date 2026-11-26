@@ -10,16 +10,21 @@ use crate::atoms::{AtomId, AtomKind, Ctx, LimitsType, SpaceData};
 use crate::boxes::Alignment;
 use crate::boxes::cmax;
 use crate::boxes::cmin;
+use crate::decor::{Frame, rotation_option};
 use crate::draw::{BLACK, TRANSPARENT};
 use crate::enums::{AtomType, SpaceType, Unit};
 use crate::env::parse_length;
 use crate::error::{Error, Result};
 use crate::font::TexStyle;
 use crate::layout::new_fraction;
+use crate::layout::new_scripts;
 use crate::layout::{new_fraction_with, new_under_over_one};
 use crate::matrix::{self, MulticolumnData};
 use crate::numparse::{read_float, read_hex_u32};
-use crate::parser::{Args, Parser, new_color, new_cumulative_scripts, parse_arg, parse_sub};
+use crate::parser::{
+    Args, Parser, new_color, new_cumulative_scripts, parse_arg, parse_plain, parse_plain_with,
+    parse_sub,
+};
 use crate::tables::{self, MacroKind};
 use crate::wstr::{self, w};
 
@@ -529,7 +534,7 @@ fn call(
             let b = ctx.boxes.strut(0.0, 0.0, 0.0, 0.0)?;
             Ok(Some(ctx.atom(AtomKind::Middle { base, r#box: b })))
         }
-        "sqrt" => {
+        "sqrt" | "sqrtsign" => {
             let base = parse_arg(ctx, tp, args[1].clone(), false)?;
             let root = if args[2].is_empty() {
                 None
@@ -870,6 +875,624 @@ fn call(
                 Alignment::Left
             };
             Ok(Some(copy))
+        }
+        "breakEverywhere" => {
+            ctx.break_everywhere = wstr::eq(&args[1], "true");
+            Ok(None)
+        }
+        "Braket" | "Set" => {
+            let mut s = args[1].clone();
+            let bar = w("\\|");
+            let replacement = w("\\middle\\vert ");
+            let (mut text, close) = if name == "Braket" {
+                wstr::replace_all(&mut s, &bar, &replacement);
+                (w("\\left\\langle "), w("\\right\\rangle"))
+            } else {
+                if let Some(at) = wstr::find(&s, &bar, 0) {
+                    s.splice(at..at + bar.len(), replacement);
+                }
+                (w("\\left\\{"), w("\\right\\}"))
+            };
+            text.extend(s);
+            text.extend(close);
+            parse_arg(ctx, tp, text, true)
+        }
+        "choose" | "brack" | "bangle" | "brace" => {
+            let (l, r) = match name {
+                "choose" => ("lbrack", "rbrack"),
+                "brack" => ("lsqbrack", "rsqbrack"),
+                "bangle" => ("langle", "rangle"),
+                _ => ("lbrace", "rbrace"),
+            };
+            let num = tp.pop_formula_atom();
+            let text = tp.get_over_argument()?;
+            let den = parse_arg(ctx, tp, text, false)?;
+            if num.is_none() || den.is_none() {
+                return Err(Error::parse(
+                    "Both numerator and denominator of choose can't be empty!",
+                ));
+            }
+            let f = new_fraction(ctx, num, den, false);
+            let l = ctx.new_symbol(l, AtomType::Opening);
+            let r = ctx.new_symbol(r, AtomType::Closing);
+            Ok(Some(new_fenced(ctx, Some(f), Some(l), Some(r))))
+        }
+        "binom" => {
+            let num = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let den = parse_arg(ctx, tp, args[2].clone(), false)?;
+            if num.is_none() || den.is_none() {
+                return Err(Error::parse(
+                    "Both binomial coefficients must be not empty!",
+                ));
+            }
+            let f = new_fraction(ctx, num, den, false);
+            let l = ctx.new_symbol("lbrack", AtomType::Opening);
+            let r = ctx.new_symbol("rbrack", AtomType::Closing);
+            Ok(Some(new_fenced(ctx, Some(f), Some(l), Some(r))))
+        }
+        "above" => {
+            let num = tp.pop_formula_atom();
+            let (unit, value) = tp.get_length()?;
+            if unit == Unit::None {
+                return Err(Error::parse("Missing dimension for \\above!"));
+            }
+            let text = tp.get_over_argument()?;
+            let den = parse_arg(ctx, tp, text, false)?;
+            if num.is_none() || den.is_none() {
+                return Err(Error::parse(
+                    "Both numerator and denominator of a fraction can't be empty!",
+                ));
+            }
+            Ok(Some(new_fraction_with(ctx, num, den, true, unit, value)))
+        }
+        "overwithdelims" => frac_with_delims(tp, ctx, args, true, false),
+        "atopwithdelims" => frac_with_delims(tp, ctx, args, false, false),
+        "abovewithdelims" => frac_with_delims(tp, ctx, args, true, true),
+        "cfrac" => {
+            let num_align = if wstr::eq(&args[3], "r") {
+                Alignment::Right
+            } else if wstr::eq(&args[3], "l") {
+                Alignment::Left
+            } else {
+                Alignment::Center
+            };
+            let num = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let den = parse_arg(ctx, tp, args[2].clone(), false)?;
+            if num.is_none() || den.is_none() {
+                return Err(Error::parse(
+                    "Both numerator and denominator of a fraction can't be empty!",
+                ));
+            }
+            let f = new_fraction(ctx, num, den, true);
+            if let AtomKind::Fraction(data) = &mut ctx.get_mut(f).kind {
+                data.num_align = num_align;
+                data.denom_align = Alignment::Center;
+                data.use_kern = false;
+            }
+            ctx.get_mut(f).atom_type = AtomType::Inner;
+            let styled = new_style(ctx, TexStyle::Display, Some(f));
+            let row = ctx.new_row();
+            ctx.row_add(row, Some(styled));
+            Ok(Some(row))
+        }
+        "underscore" => Ok(Some(ctx.atom(AtomKind::UnderScore))),
+        "nbsp" => Ok(Some(ctx.atom(AtomKind::Space(SpaceData::blank())))),
+        "vdots" => Ok(Some(ctx.atom(AtomKind::Vdots))),
+        "ddots" | "iddots" => {
+            let dots = ctx.atom(AtomKind::DiagonalDots {
+                iddots: name == "iddots",
+            });
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::Inner,
+                AtomType::Inner,
+                Some(dots),
+            )?))
+        }
+        "(" | "[" => {
+            let (open, close, style) = if name == "(" {
+                ("\\(", "\\)", TexStyle::Text)
+            } else {
+                ("\\[", "\\]", TexStyle::Display)
+            };
+            let group = tp.get_group_strings(&w(open), &w(close))?;
+            let base = parse_arg(ctx, tp, group, false)?;
+            Ok(Some(ctx.atom(AtomKind::Math { style, base })))
+        }
+        "questeq" => {
+            let eq = ctx.symbol("equals")?;
+            let quest = ctx.symbol("question")?;
+            let sq = scale_atom(ctx, quest, 0.75, 0.75);
+            let at = new_under_over_one(ctx, Some(eq), Some(sq), Unit::Mu, 2.5, true, true);
+            typed_relation(ctx, at)
+        }
+        "cong" => {
+            let eq = ctx.symbol("equals")?;
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, 0.0, 1.5, 0.0)));
+            let sim = ctx.symbol("sim")?;
+            let vra = ctx.atom(AtomKind::VRow {
+                elements: vec![sim, space, eq],
+                raise: SpaceData::sized(Unit::Mu, -1.0, 0.0, 0.0),
+                add_interline: false,
+                valign: Alignment::Center,
+                halign: Alignment::None,
+            });
+            typed_relation(ctx, vra)
+        }
+        "doteq" => {
+            let at = under_over_symbols(ctx, "equals", "ldotp", 3.7)?;
+            typed_relation(ctx, at)
+        }
+        "dotminus" => {
+            let at = under_over_symbols(ctx, "minus", "normaldot", -3.3)?;
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::BinaryOperator,
+                AtomType::BinaryOperator,
+                Some(at),
+            )?))
+        }
+        "ratio" => {
+            let at = colon(ctx)?;
+            typed_relation(ctx, at)
+        }
+        "geoprop" => {
+            let d1 = ctx.symbol("normaldot")?;
+            let ddot = ctx.new_row_of(Some(d1));
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, 4.0, 0.0, 0.0)));
+            ctx.row_add(ddot, Some(space));
+            let d2 = ctx.symbol("normaldot")?;
+            ctx.row_add(ddot, Some(d2));
+            let minus = ctx.symbol("minus")?;
+            let at = ctx.atom(AtomKind::UnderOver(Box::new(UnderOverData {
+                base: Some(minus),
+                under: Some(ddot),
+                under_unit: Unit::Mu,
+                under_space: -3.4,
+                under_small: false,
+                over: Some(ddot),
+                over_unit: Unit::Mu,
+                over_space: -3.4,
+                over_small: false,
+            })));
+            typed_relation(ctx, at)
+        }
+        "smallfrowneq" => {
+            let eq = ctx.symbol("equals")?;
+            let frown = ctx.symbol("smallfrown")?;
+            let at = new_under_over_one(ctx, Some(eq), Some(frown), Unit::Mu, -2.0, true, true);
+            typed_relation(ctx, at)
+        }
+        "minuscolon" | "minuscoloncolon" | "simcolon" | "simcoloncolon" | "approxcolon"
+        | "approxcoloncolon" | "coloncolon" | "equalscolon" | "equalscoloncolon" | "colonminus"
+        | "coloncolonminus" | "colonequals" | "coloncolonequals" | "colonsim" | "coloncolonsim"
+        | "colonapprox" | "coloncolonapprox" => colon_relation(ctx, name),
+        "char" => {
+            let x = wstr::narrow_bytes(&args[1]);
+            let (digits, radix) = if x.starts_with(b"0x") || x.starts_with(b"0X") {
+                (&x[2..], 16)
+            } else if x.starts_with(b"x") || x.starts_with(b"X") {
+                (&x[1..], 16)
+            } else if x.starts_with(b"0") {
+                (&x[1..], 8)
+            } else {
+                (&x[..], 10)
+            };
+            let n = str_to_int(digits, radix).unwrap_or(0);
+            tp.convert_character(ctx, n as u16, true)
+        }
+        "surd" => {
+            let at = ctx.symbol("surdsign")?;
+            Ok(Some(ctx.atom(AtomKind::VCentered { at })))
+        }
+        "int" | "oint" => {
+            let s = ctx.symbol(name)?;
+            let copy = ctx.private_copy(s);
+            ctx.get_mut(copy).limits = LimitsType::NoLimits;
+            Ok(Some(copy))
+        }
+        "iint" | "iiint" | "iiiint" => {
+            let s = ctx.symbol("int")?;
+            let i = ctx.private_copy(s);
+            ctx.get_mut(i).limits = LimitsType::NoLimits;
+            let n = match name {
+                "iint" => 2,
+                "iiint" => 3,
+                _ => 4,
+            };
+            let row = ctx.new_row_of(Some(i));
+            for _ in 1..n {
+                let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -8.0, 0.0, 0.0)));
+                ctx.row_add(row, Some(space));
+                ctx.row_add(row, Some(i));
+            }
+            look_at_last_atom(ctx, row);
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::BigOperator,
+                AtomType::BigOperator,
+                Some(row),
+            )?))
+        }
+        "idotsint" => {
+            let s = ctx.symbol("int")?;
+            let i = ctx.private_copy(s);
+            ctx.get_mut(i).limits = LimitsType::NoLimits;
+            let row = ctx.new_row_of(Some(i));
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -1.0, 0.0, 0.0)));
+            ctx.row_add(row, Some(space));
+            let cdotp = ctx.symbol("cdotp")?;
+            let cdots = ctx.new_row_of(Some(cdotp));
+            ctx.row_add(cdots, Some(cdotp));
+            ctx.row_add(cdots, Some(cdotp));
+            let inner = new_typed(ctx, AtomType::Inner, AtomType::Inner, Some(cdots))?;
+            ctx.row_add(row, Some(inner));
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -1.0, 0.0, 0.0)));
+            ctx.row_add(row, Some(space));
+            ctx.row_add(row, Some(i));
+            look_at_last_atom(ctx, row);
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::BigOperator,
+                AtomType::BigOperator,
+                Some(row),
+            )?))
+        }
+        "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large"
+        | "LARGE" | "huge" | "Huge" => {
+            let factor = match name {
+                "tiny" => 0.5,
+                "scriptsize" => 0.7,
+                "footnotesize" => 0.8,
+                "small" => 0.9,
+                "large" => 1.2,
+                "Large" => 1.4,
+                "LARGE" => 1.8,
+                "huge" => 2.0,
+                "Huge" => 2.5,
+                _ => 1.0,
+            };
+            let text = tp.get_over_argument()?;
+            let math_mode = tp.is_math_mode();
+            let base = parse_sub(ctx, tp, text, "", false, math_mode)?
+                .root
+                .ok_or_else(|| Error::invalid_state("Nothing to scale."))?;
+            let atom_type = ctx.get(base).atom_type;
+            let id = ctx.atom(AtomKind::MonoScale { base, factor });
+            ctx.get_mut(id).atom_type = atom_type;
+            Ok(Some(id))
+        }
+        "overset" | "underset" => {
+            let base = parse_arg(ctx, tp, args[2].clone(), false)?;
+            let script = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let (space, over) = if name == "overset" {
+                (2.5, true)
+            } else {
+                (0.5, false)
+            };
+            let at = new_under_over_one(ctx, base, script, Unit::Mu, space, true, over);
+            typed_relation(ctx, at)
+        }
+        "accentset" => {
+            let base = parse_arg(ctx, tp, args[2].clone(), false)?;
+            let accent = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_accented(ctx, base, accent, true)?))
+        }
+        "undertilde" => {
+            let a = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let elements = ctx.new_row_of(a);
+            let p = ctx.atom(AtomKind::Phantom {
+                elements,
+                w: true,
+                h: false,
+                d: false,
+            });
+            let acc = new_accented_named(ctx, Some(p), "widetilde")?;
+            Ok(Some(new_under_over_one(
+                ctx,
+                a,
+                Some(acc),
+                Unit::Mu,
+                0.3,
+                true,
+                false,
+            )))
+        }
+        "boldsymbol" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::Bold { base })))
+        }
+        "fgcolor" => {
+            let a = parse_arg(ctx, tp, args[2].clone(), true)?;
+            let c = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            Ok(Some(new_color(ctx, a, TRANSPARENT, c)))
+        }
+        "boxed" => {
+            let a = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(new_fbox(ctx, a, TRANSPARENT, TRANSPARENT)))
+        }
+        "Text" => {
+            let base = parse_sub(ctx, tp, args[1].clone(), "mathnormal", false, false)?.root;
+            Ok(Some(ctx.atom(AtomKind::Roman { base })))
+        }
+        "Textit" | "Textbf" | "Textitbf" => {
+            let style = match name {
+                "Textit" => 2,
+                "Textbf" => 1,
+                _ => 3,
+            };
+            Ok(Some(ctx.atom(AtomKind::TextRendering {
+                text: args[1].clone(),
+                style,
+                infos: None,
+            })))
+        }
+        "XML" => parse_arg(ctx, tp, args[1].clone(), true),
+        "roman" | "Roman" => {
+            let x = wstr::narrow_bytes(&args[1]);
+            let start = x.iter().position(|&b| !is_space(b)).unwrap_or(x.len());
+            let end = x
+                .iter()
+                .rposition(|&b| !is_space(b))
+                .map_or(start, |e| e + 1);
+            let trimmed: Vec<u16> = x[start..end.max(start)]
+                .iter()
+                .map(|&b| u16::from(b))
+                .collect();
+            let mut num = value_of_int(&trimmed);
+            if num > MAX_ROMAN_NUMERAL {
+                return Err(Error::parse("Value too large for a roman numeral!"));
+            }
+            const NUMBERS: [(i32, &str); 13] = [
+                (1000, "M"),
+                (900, "CM"),
+                (500, "D"),
+                (400, "CD"),
+                (100, "C"),
+                (90, "XC"),
+                (50, "L"),
+                (40, "XL"),
+                (10, "X"),
+                (9, "IX"),
+                (5, "V"),
+                (4, "IV"),
+                (1, "I"),
+            ];
+            let mut roman = String::new();
+            for (value, letters) in NUMBERS {
+                while num >= value {
+                    roman.push_str(letters);
+                    num -= value;
+                }
+            }
+            if name == "roman" {
+                roman = roman.to_ascii_lowercase();
+            }
+            Ok(parse_plain_with(ctx, w(&roman), false)?.root)
+        }
+        "includegraphics" | "fcscore" | "GeoGebra" | "dynamic" => Ok(None),
+        "sp@breve" | "sp@hat" => {
+            let text = if name == "sp@breve" {
+                "\\displaystyle\\!\\breve{}"
+            } else {
+                "\\displaystyle\\widehat{}"
+            };
+            let root = parse_plain(ctx, w(text))?.root;
+            let atom = new_vrow_raised(ctx, root, 0.6);
+            Ok(Some(ctx.atom(AtomKind::Smashed {
+                atom,
+                h: true,
+                d: true,
+            })))
+        }
+        "llap" | "rlap" | "clap" | "mathllap" | "mathrlap" | "mathclap" => {
+            let at = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let kind = if name.len() > 4 {
+                name.as_bytes()[4]
+            } else {
+                name.as_bytes()[0]
+            };
+            Ok(Some(ctx.atom(AtomKind::Laped {
+                at,
+                kind: u16::from(kind),
+            })))
+        }
+        "cancel" | "bcancel" | "xcancel" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?
+                .ok_or_else(|| Error::parse("Cancel content must not be empty!"))?;
+            let kind = match name {
+                "cancel" => 0,
+                "bcancel" => 1,
+                _ => 2,
+            };
+            Ok(Some(ctx.atom(AtomKind::Cancel { base, kind })))
+        }
+        "c" | "k" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), true)?;
+            Ok(Some(ctx.atom(AtomKind::UnderMark {
+                base,
+                ogonek: name == "k",
+            })))
+        }
+        "IJ" | "ij" => Ok(Some(ctx.atom(AtomKind::IJ {
+            upper: name == "IJ",
+        }))),
+        "TStroke" | "tStroke" => Ok(Some(ctx.atom(AtomKind::TStroke {
+            upper: name == "TStroke",
+        }))),
+        "Lcaron" | "lcaron" => Ok(Some(ctx.atom(AtomKind::LCaron {
+            upper: name == "Lcaron",
+        }))),
+        "tcaron" => Ok(Some(ctx.atom(AtomKind::TCaron))),
+        "hstrok" => strok(tp, ctx, b'h', -0.1, "bar", -0.1),
+        "Hstrok" => strok(tp, ctx, b'H', -0.28, "textendash", 0.55),
+        "dstrok" => strok(tp, ctx, b'd', 0.25, "bar", -0.1),
+        "Dstrok" => strok(tp, ctx, b'D', -0.1, "bar", -0.55),
+        "overline" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::Overlined { base })))
+        }
+        "underline" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::Underlined { base })))
+        }
+        "st" => {
+            let at = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::StrikeThrough { at })))
+        }
+        "textsc" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::SmallCap { base })))
+        }
+        "sc" => {
+            let text = tp.get_over_argument()?;
+            let math_mode = tp.is_math_mode();
+            let base = parse_sub(ctx, tp, text, "", false, math_mode)?.root;
+            Ok(Some(ctx.atom(AtomKind::SmallCap { base })))
+        }
+        "reflectbox" => {
+            let base = required(parse_arg(ctx, tp, args[1].clone(), true)?)?;
+            Ok(Some(with_base_type(ctx, base, AtomKind::Reflect { base })))
+        }
+        "rotatebox" => {
+            let mut angle = 0.0;
+            if !args[1].is_empty() {
+                angle = float_of_wide(ctx, &args[1]);
+            }
+            let base = required(parse_arg(ctx, tp, args[2].clone(), true)?)?;
+            let option = rotation_option(&wstr::narrow_bytes(&args[3]));
+            Ok(Some(with_base_type(
+                ctx,
+                base,
+                AtomKind::Rotate {
+                    base,
+                    angle,
+                    option,
+                },
+            )))
+        }
+        "T" => {
+            let base = required(parse_arg(ctx, tp, args[1].clone(), true)?)?;
+            let option = rotation_option(b"origin=cc");
+            Ok(Some(with_base_type(
+                ctx,
+                base,
+                AtomKind::Rotate {
+                    base,
+                    angle: 180.0,
+                    option,
+                },
+            )))
+        }
+        "scalebox" => {
+            let mut sx = float_of_wide(ctx, &args[1]);
+            let mut sy = if args[3].is_empty() {
+                sx
+            } else {
+                float_of_wide(ctx, &args[3])
+            };
+            if sx == 0.0 {
+                sx = 1.0;
+            }
+            if sy == 0.0 {
+                sy = 1.0;
+            }
+            let base = required(parse_arg(ctx, tp, args[2].clone(), true)?)?;
+            Ok(Some(scale_atom(ctx, base, sx, sy)))
+        }
+        "resizebox" => {
+            let ws = wstr::narrow_bytes(&args[1]);
+            let hs = wstr::narrow_bytes(&args[2]);
+            let base = required(parse_arg(ctx, tp, args[3].clone(), true)?)?;
+            let keep_aspect_ratio = ws == b"!" || hs == b"!";
+            let (w_unit, w) = crate::env::parse_length_bytes(&ws);
+            let (h_unit, h) = crate::env::parse_length_bytes(&hs);
+            Ok(Some(with_base_type(
+                ctx,
+                base,
+                AtomKind::Resize {
+                    base,
+                    w_unit,
+                    w,
+                    h_unit,
+                    h,
+                    keep_aspect_ratio,
+                },
+            )))
+        }
+        "shadowbox" | "ovalbox" | "doublebox" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let kind = match name {
+                "shadowbox" => Frame::Shadow,
+                "ovalbox" => Frame::Oval,
+                _ => Frame::Double,
+            };
+            let (base, atom_type) = match base {
+                None => (ctx.new_row(), AtomType::Ordinary),
+                Some(b) => (b, ctx.get(b).atom_type),
+            };
+            let id = ctx.atom(AtomKind::Frame { base, kind });
+            ctx.get_mut(id).atom_type = atom_type;
+            Ok(Some(id))
+        }
+        "cornersize" => {
+            let mut size = float_of_wide(ctx, &args[1]);
+            if !(size > 0.0 && size <= 0.5) {
+                size = 0.5;
+            }
+            ctx.oval_multiplier = size;
+            ctx.oval_diameter = 0.0;
+            Ok(None)
+        }
+        "prescript" => {
+            let base = parse_arg(ctx, tp, args[3].clone(), true)?;
+            let elements = ctx.new_row_of(base);
+            let p = ctx.atom(AtomKind::Phantom {
+                elements,
+                w: false,
+                h: true,
+                d: true,
+            });
+            let sup = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let sub = parse_arg(ctx, tp, args[2].clone(), true)?;
+            let s = new_scripts(ctx, Some(p), sub, sup, Alignment::Right)?;
+            tp.add_atom(ctx, Some(s));
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -0.3, 0.0, 0.0)));
+            tp.add_atom(ctx, Some(space));
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::Ordinary,
+                AtomType::Ordinary,
+                base,
+            )?))
+        }
+        "magnification" => {
+            let x = float_of_wide(ctx, &args[1]);
+            if x.is_finite() && x > 0.0 {
+                ctx.mag_factor = x / 1000.0;
+            }
+            Ok(None)
+        }
+        "DeclareMathSizes" => {
+            let ds = float_of_wide(ctx, &args[1]);
+            let ts = float_of_wide(ctx, &args[2]);
+            let ss = float_of_wide(ctx, &args[3]);
+            float_of_wide(ctx, &args[4]);
+            let sss = ss;
+            if !ds.is_finite() || !ts.is_finite() || !ss.is_finite() || ds == 0.0 {
+                return Ok(None);
+            }
+            let sf = (ss / ds).abs();
+            let ssf = (sss / ds).abs();
+            let tf = (ts / ds).abs();
+            let bad = |v: f32| !v.is_finite() || v <= 0.0;
+            if bad(sf) || bad(ssf) || bad(tf) {
+                return Ok(None);
+            }
+            ctx.settings.script_factor = sf;
+            ctx.settings.script_script_factor = ssf;
+            ctx.settings.text_factor = tf;
+            Ok(None)
         }
         "joinrel" => {
             let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
@@ -1284,4 +1907,245 @@ fn float_of_wide(ctx: &mut Ctx, s: &[u16]) -> f32 {
         .map(|&c| if c < 0x80 { c as u8 } else { 0x80 })
         .collect();
     float_of(ctx, &bytes)
+}
+
+/// `kMaxRomanNumeral`.
+const MAX_ROMAN_NUMERAL: i32 = 100_000;
+
+/// An atom the C++ dereferences without a check.
+fn required(atom: Option<AtomId>) -> Result<AtomId> {
+    atom.ok_or_else(|| Error::invalid_state("A required atom is missing."))
+}
+
+/// An atom that takes the type of its base, as `ReflectAtom`, `RotateAtom`
+/// and `ResizeAtom` do.
+fn with_base_type(ctx: &mut Ctx, base: AtomId, kind: AtomKind) -> AtomId {
+    let atom_type = ctx.get(base).atom_type;
+    let id = ctx.atom(kind);
+    ctx.get_mut(id).atom_type = atom_type;
+    id
+}
+
+/// `FencedAtom(base, left, right)`: no base makes an empty row and a
+/// `normaldot` delimiter is dropped.
+fn new_fenced(
+    ctx: &mut Ctx,
+    base: Option<AtomId>,
+    left: Option<AtomId>,
+    right: Option<AtomId>,
+) -> AtomId {
+    let base = match base {
+        Some(b) => b,
+        None => ctx.new_row(),
+    };
+    let keep = |ctx: &Ctx, s: Option<AtomId>| {
+        s.filter(|&s| {
+            !matches!(
+                ctx.get(s).kind,
+                AtomKind::Symbol {
+                    name: "normaldot",
+                    ..
+                }
+            )
+        })
+    };
+    let (left, right) = (keep(ctx, left), keep(ctx, right));
+    ctx.atom(AtomKind::Fenced {
+        base,
+        left,
+        right,
+        middle: Vec::new(),
+    })
+}
+
+fn typed_relation(ctx: &mut Ctx, atom: AtomId) -> Result<Option<AtomId>> {
+    Ok(Some(new_typed(
+        ctx,
+        AtomType::Relation,
+        AtomType::Relation,
+        Some(atom),
+    )?))
+}
+
+fn look_at_last_atom(ctx: &mut Ctx, row: AtomId) {
+    if let AtomKind::Row {
+        look_at_last_atom, ..
+    } = &mut ctx.get_mut(row).kind
+    {
+        *look_at_last_atom = true;
+    }
+}
+
+/// `_underover(base, script, space)`.
+fn under_over_symbols(ctx: &mut Ctx, base: &str, script: &str, space: f32) -> Result<AtomId> {
+    let b = ctx.symbol(base)?;
+    let s = ctx.symbol(script)?;
+    Ok(new_under_over_one(
+        ctx,
+        Some(b),
+        Some(s),
+        Unit::Mu,
+        space,
+        false,
+        true,
+    ))
+}
+
+/// `_colon()`.
+fn colon(ctx: &mut Ctx) -> Result<AtomId> {
+    under_over_symbols(ctx, "normaldot", "normaldot", 5.2)
+}
+
+fn em_space(ctx: &mut Ctx, width: f32) -> AtomId {
+    ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Em, width, 0.0, 0.0)))
+}
+
+/// The `\colonequals` family: a symbol then one or two colons, or one or
+/// two colons then a symbol, as a relation.
+fn colon_relation(ctx: &mut Ctx, name: &str) -> Result<Option<AtomId>> {
+    let row = if name == "coloncolon" {
+        let u = colon(ctx)?;
+        let row = ctx.new_row_of(Some(u));
+        ctx.row_add(row, Some(u));
+        row
+    } else if let Some(rest) = name.strip_prefix("colon") {
+        let (double, symbol) = match rest.strip_prefix("colon") {
+            Some(s) => (true, s),
+            None => (false, rest),
+        };
+        let u = colon(ctx)?;
+        let row = ctx.new_row_of(Some(u));
+        if double {
+            ctx.row_add(row, Some(u));
+        }
+        let space = em_space(ctx, -0.32);
+        ctx.row_add(row, Some(space));
+        let s = ctx.symbol(symbol)?;
+        ctx.row_add(row, Some(s));
+        row
+    } else {
+        let (symbol, double) = match name.strip_suffix("coloncolon") {
+            Some(s) => (s, true),
+            None => (name.strip_suffix("colon").unwrap_or(name), false),
+        };
+        let s = ctx.symbol(symbol)?;
+        let row = ctx.new_row_of(Some(s));
+        let space = em_space(ctx, -0.095);
+        ctx.row_add(row, Some(space));
+        let u = colon(ctx)?;
+        ctx.row_add(row, Some(u));
+        if double {
+            ctx.row_add(row, Some(u));
+        }
+        row
+    };
+    typed_relation(ctx, row)
+}
+
+/// `_frac_with_delims()`: `\overwithdelims` and its siblings.
+fn frac_with_delims(
+    tp: &mut Parser,
+    ctx: &mut Ctx,
+    args: &Args,
+    rule: bool,
+    has_length: bool,
+) -> Result<Option<AtomId>> {
+    let num = tp.pop_formula_atom();
+    let (mut unit, mut value) = (Unit::Em, 0.0);
+    if has_length {
+        (unit, value) = tp.get_length()?;
+        if unit == Unit::None {
+            return Err(Error::parse("Missing dimension for \\abovewithdelims!"));
+        }
+    }
+    let text = tp.get_over_argument()?;
+    let den = parse_arg(ctx, tp, text, false)?;
+    if num.is_none() || den.is_none() {
+        return Err(Error::parse(
+            "Both numerator and denominator of a fraction can't be empty!",
+        ));
+    }
+    let left = parse_arg(ctx, tp, args[1].clone(), false)?;
+    let left = unwrap_big(ctx, left);
+    let right = parse_arg(ctx, tp, args[2].clone(), false)?;
+    let right = unwrap_big(ctx, right);
+    let make = |ctx: &mut Ctx| {
+        if has_length {
+            new_fraction_with(ctx, num, den, true, unit, value)
+        } else {
+            new_fraction(ctx, num, den, rule)
+        }
+    };
+    if is_symbol(ctx, left) && is_symbol(ctx, right) {
+        let f = make(ctx);
+        return Ok(Some(new_fenced(ctx, Some(f), left, right)));
+    }
+    let row = ctx.new_row();
+    ctx.row_add(row, left);
+    let f = make(ctx);
+    ctx.row_add(row, Some(f));
+    ctx.row_add(row, right);
+    Ok(Some(row))
+}
+
+/// `str2int(str, n, radix)`: `strtol` with Windows' 32-bit `long`. `None`
+/// when the value is out of range, which leaves the target at 0.
+fn str_to_int(s: &[u8], radix: u32) -> Option<i32> {
+    let mut i = 0;
+    while i < s.len() && is_space(s[i]) {
+        i += 1;
+    }
+    let mut negative = false;
+    if i < s.len() && (s[i] == b'+' || s[i] == b'-') {
+        negative = s[i] == b'-';
+        i += 1;
+    }
+    if radix == 16
+        && i + 2 < s.len()
+        && s[i] == b'0'
+        && (s[i + 1] == b'x' || s[i + 1] == b'X')
+        && s[i + 2].is_ascii_hexdigit()
+    {
+        i += 2;
+    }
+    let mut value: i64 = 0;
+    while i < s.len() {
+        let Some(d) = char::from(s[i]).to_digit(radix) else {
+            break;
+        };
+        value = (value * i64::from(radix) + i64::from(d)).min(1 << 40);
+        i += 1;
+    }
+    let value = if negative { -value } else { value };
+    i32::try_from(value).ok()
+}
+
+/// `\hstrok` and its siblings: a lapped bar raised over a roman letter.
+fn strok(
+    tp: &mut Parser,
+    ctx: &mut Ctx,
+    letter: u8,
+    kern: f32,
+    symbol: &str,
+    raise: f32,
+) -> Result<Option<AtomId>> {
+    let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Ex, kern, 0.0, 0.0)));
+    let ra = ctx.new_row_of(Some(space));
+    let s = ctx.symbol(symbol)?;
+    ctx.row_add(ra, Some(s));
+    let lap = ctx.atom(AtomKind::Laped {
+        at: Some(ra),
+        kind: u16::from(b'r'),
+    });
+    let vra = new_vrow_raised(ctx, Some(lap), raise);
+    let a = ctx.new_row_of(Some(vra));
+    let ch = ctx.atom(AtomKind::Char {
+        c: u16::from(letter),
+        text_style: tp.formula.text_style,
+        math_mode: false,
+        text_symbol: false,
+    });
+    let roman = ctx.atom(AtomKind::Roman { base: Some(ch) });
+    ctx.row_add(a, Some(roman));
+    Ok(Some(a))
 }

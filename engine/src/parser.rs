@@ -1445,7 +1445,12 @@ pub fn new_cumulative_scripts(
 
 /// `Formula(latex)`: a partial parser whose errors are not caught.
 pub fn parse_plain(ctx: &mut Ctx, latex: WStr) -> Result<Formula> {
-    let mut parser = Parser::new(ctx, true, latex, Formula::default(), true, true)?;
+    parse_plain_with(ctx, latex, true)
+}
+
+/// `Formula(latex, preprocess)`.
+pub fn parse_plain_with(ctx: &mut Ctx, latex: WStr, preprocess: bool) -> Result<Formula> {
+    let mut parser = Parser::new(ctx, true, latex, Formula::default(), preprocess, true)?;
     parser.parse(ctx)?;
     Ok(parser.formula)
 }

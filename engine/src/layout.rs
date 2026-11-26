@@ -25,13 +25,18 @@ pub(crate) fn null_atom() -> Error {
     Error::invalid_state("A required atom is missing.")
 }
 
-fn symbol_char(env: &Environment, name: &str, style: TexStyle) -> Result<Char> {
+pub(crate) fn symbol_char(env: &Environment, name: &str, style: TexStyle) -> Result<Char> {
     env.font
         .char_of_symbol(&env.settings, name, style)
         .map_err(|_| Error::symbol_mapping_not_found(name))
 }
 
-fn text_style_char(env: &Environment, c: u16, text_style: &str, style: TexStyle) -> Result<Char> {
+pub(crate) fn text_style_char(
+    env: &Environment,
+    c: u16,
+    text_style: &str,
+    style: TexStyle,
+) -> Result<Char> {
     env.font
         .char_of_text_style(&env.settings, c, text_style, style)
         .map_err(|_| Error::text_style_mapping_not_found(text_style))
@@ -333,6 +338,46 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
             valign,
             halign,
         } => vrow_box(ctx, &elements, &raise, add_interline, valign, halign, env),
+        AtomKind::Vdots => crate::decor::vdots(ctx, env),
+        AtomKind::DiagonalDots { iddots } => {
+            let aligns = if iddots {
+                [Alignment::Right, Alignment::Center, Alignment::Left]
+            } else {
+                [Alignment::Left, Alignment::Center, Alignment::Right]
+            };
+            crate::decor::diagonal_dots(ctx, aligns, env)
+        }
+        AtomKind::VCentered { at } => crate::decor::vcentered(ctx, at, env),
+        AtomKind::MonoScale { base, factor } => crate::decor::mono_scale(ctx, base, factor, env),
+        AtomKind::IJ { upper } => crate::decor::ij(ctx, upper, env),
+        AtomKind::LCaron { upper } => crate::decor::lcaron(ctx, upper, env),
+        AtomKind::TCaron => crate::decor::tcaron(ctx, env),
+        AtomKind::TStroke { upper } => crate::decor::tstroke(ctx, upper, env),
+        AtomKind::UnderMark { base, ogonek } => crate::decor::under_mark(ctx, base, ogonek, env),
+        AtomKind::Laped { at, kind } => crate::decor::laped(ctx, at, kind, env),
+        AtomKind::Overlined { base } => crate::decor::overlined(ctx, base, env),
+        AtomKind::Underlined { base } => crate::decor::underlined(ctx, base, env),
+        AtomKind::StrikeThrough { at } => crate::decor::strike_through(ctx, at, env),
+        AtomKind::Cancel { base, kind } => crate::decor::cancel(ctx, base, kind, env),
+        AtomKind::Reflect { base } => {
+            let b = create_box(ctx, base, env)?;
+            ctx.boxes.reflect_box(b)
+        }
+        AtomKind::Rotate {
+            base,
+            angle,
+            option,
+        } => crate::decor::rotate(ctx, base, angle, option, env),
+        AtomKind::Resize {
+            base,
+            w_unit,
+            w,
+            h_unit,
+            h,
+            keep_aspect_ratio,
+        } => crate::decor::resize(ctx, base, w_unit, w, h_unit, h, keep_aspect_ratio, env),
+        AtomKind::SmallCap { base } => crate::decor::small_cap(ctx, base, env),
+        AtomKind::Frame { base, kind } => crate::decor::frame(ctx, base, kind, env),
         AtomKind::Matrix(m) => crate::matrix::matrix_box(ctx, &m, env),
         AtomKind::Multline {
             array,

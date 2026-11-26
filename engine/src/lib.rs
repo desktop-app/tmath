@@ -4,6 +4,7 @@
 
 pub mod atoms;
 pub mod boxes;
+pub mod decor;
 pub mod draw;
 pub mod enums;
 pub mod env;

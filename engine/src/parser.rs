@@ -60,6 +60,8 @@ pub struct Formula {
     pub root: Option<AtomId>,
     pub middle: Vec<AtomId>,
     pub text_style: &'static str,
+    /// Set for an `ArrayFormula`.
+    pub array: Option<Box<crate::matrix::ArrayData>>,
 }
 
 impl Formula {
@@ -241,7 +243,7 @@ impl Parser {
                 parser.preprocess(ctx)?;
             }
         }
-        parser.array_mode = false;
+        parser.array_mode = parser.formula.array.is_some();
         parser.math_mode = math_mode;
         Ok(parser)
     }
@@ -593,6 +595,41 @@ impl Parser {
     /// `finish()`.
     pub fn finish(&mut self) {
         self.pos = self.latex.len() as i32;
+    }
+
+    /// `addRow()`.
+    pub fn add_row(&mut self) -> Result<()> {
+        if !self.array_mode || self.formula.array.is_none() {
+            return Err(Error::parse("Can not add row in none-array mode!"));
+        }
+        self.formula.add_row()
+    }
+
+    /// `forwardBalancedGroup()`: the rest of the current group, leaving the
+    /// position on its closing brace.
+    pub fn forward_balanced_group(&mut self) -> Result<WStr> {
+        if self.group == 0 {
+            let sub = wstr::substr_from(&self.latex, i64::from(self.pos))?;
+            self.finish();
+            return Ok(sub);
+        }
+        let mut closing = self.group;
+        let mut i = self.latex.len() as i64 - 1;
+        while i >= i64::from(self.pos) && i >= 0 {
+            if self.latex[i as usize] == R_GROUP {
+                closing -= 1;
+                if closing == 0 {
+                    break;
+                }
+            }
+            i -= 1;
+        }
+        if closing != 0 {
+            return Err(Error::parse("Found a closing '}' without an opening '{'!"));
+        }
+        let sub = self.substr(self.pos, (i - i64::from(self.pos)) as i32)?;
+        self.pos = i as i32;
+        Ok(sub)
     }
 
     /// `getOptsArgs()`.
@@ -1139,6 +1176,11 @@ impl Parser {
                 ESCAPE => {
                     let atom = self.process_escape(ctx)?;
                     self.formula.add(ctx, atom);
+                    if self.array_mode
+                        && atom.is_some_and(|a| matches!(ctx.get(a).kind, AtomKind::Hline { .. }))
+                    {
+                        self.formula.add_row()?;
+                    }
                     if self.insertion {
                         self.insertion = false;
                     }
@@ -1182,7 +1224,8 @@ impl Parser {
                             "Character '&' is only available in array mode!",
                         ));
                     }
-                    return Err(macros::unsupported(ctx, "array cells"));
+                    self.formula.add_col()?;
+                    self.pos += 1;
                 }
                 0x7E => {
                     let atom = ctx.atom(AtomKind::Space(SpaceData::blank()));

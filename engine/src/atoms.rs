@@ -10,8 +10,10 @@ use crate::draw::TextFont;
 use crate::enums::{AtomType, SpaceType, Unit};
 use crate::error::{Error, Result};
 use crate::font::{GeneralSettings, TexStyle};
+use crate::matrix::{ArrayData, MatrixData, MultiLineType, MulticolumnData};
 use crate::tables::{self, CharFont};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AtomId(u32);
@@ -316,6 +318,34 @@ pub enum AtomKind {
         bg: u32,
         line: u32,
     },
+    /// `MatrixAtom`.
+    Matrix(Rc<MatrixData>),
+    /// `MultlineAtom`.
+    Multline {
+        array: Rc<ArrayData>,
+        line_type: MultiLineType,
+        partial: bool,
+    },
+    /// `HlineAtom`: the matrix sets its width and color when laid out.
+    Hline {
+        width: f32,
+        shift: f32,
+        color: u32,
+    },
+    /// `CellColorAtom` (the background) or `CellForegroundAtom`.
+    CellSpecifier {
+        color: u32,
+        foreground: bool,
+    },
+    /// `MulticolumnAtom` and `HdotsforAtom`.
+    Multicolumn(MulticolumnData),
+    /// `MultiRowAtom`: the matrix moves and resizes it when laid out.
+    MultiRow {
+        rows: Option<AtomId>,
+        i: i32,
+        j: i32,
+        n: i32,
+    },
     /// `MiddleAtom`.
     Middle {
         base: Option<AtomId>,
@@ -384,6 +414,10 @@ pub struct Ctx<'a> {
     pub break_everywhere: bool,
     /// Colors `\definecolor` added or replaced.
     pub user_colors: BTreeMap<String, u32>,
+    /// `MatrixAtom::LINE_COLOR`: the last `\arrayrulecolor`.
+    pub line_color: u32,
+    /// `MatrixAtom::_colspeReplacement`: `\newcolumntype` definitions.
+    pub column_types: BTreeMap<Vec<u16>, Vec<u16>>,
     /// The first part of MicroTeX the formula needed that is not ported.
     pub unsupported: Option<String>,
     /// `Formula::_predefinedTeXFormulas`: the parsed predefined formulas
@@ -412,6 +446,8 @@ impl<'a> Ctx<'a> {
             text_font: TextFont::new("Serif", 0, 10.0),
             break_everywhere: false,
             user_colors: BTreeMap::new(),
+            line_color: crate::draw::TRANSPARENT,
+            column_types: BTreeMap::new(),
             unsupported: None,
             predefined: HashMap::new(),
             inserted_formula_mappings: HashSet::new(),

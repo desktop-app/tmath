@@ -284,6 +284,136 @@ def gen_environments(root):
         add(f"c1/env/{name}/unclosed", f"\\begin{{{name}}}{variants[0]}a&b")
 
 
+ARRAY_CASES = {
+    "spec/at-empty": r"\begin{array}{@{}c@{}}a\\b\end{array}",
+    "spec/at-many": r"\begin{array}{c@{:}c@{-}c}a&b&c\\d&e&f\end{array}",
+    "spec/at-past-cols": r"\begin{array}{c@{x}c@{y}c@{z}}a&b\end{array}",
+    "spec/at-short-row": r"\begin{array}{ccc@{x}}\\a&b&c\end{array}",
+    "spec/at-group": r"\begin{array}{c@{\quad\frac12}c}a&b\end{array}",
+    "spec/star": r"\begin{array}{*{3}{c|}}a&b&c\end{array}",
+    "spec/star-zero": r"\begin{array}{*{0}{c}c}a\end{array}",
+    "spec/star-negative": r"\begin{array}{*{-1}{c}}a\end{array}",
+    "spec/star-too-many": r"\begin{array}{*{1001}{c}}a\end{array}",
+    "spec/star-too-long": r"\begin{array}{*{1000}{cccccccccccc}}a\end{array}",
+    "spec/star-nested": r"\begin{array}{*{2}{*{2}{l}r}}a&b&c&d&e&f\end{array}",
+    "spec/vlines": r"\begin{array}{||c|||c||}a&b\\c&d\end{array}",
+    "spec/more-cells": r"\begin{array}{c}a&b&c\end{array}",
+    "spec/more-columns": r"\begin{array}{lcrlcr}a&b\end{array}",
+    "spec/blanks": "\\begin{array}{ l\tc r }a&b&c\\end{array}",
+    "spec/unknown": r"\begin{array}{xyz}a&b&c\end{array}",
+    "spec/empty": r"\begin{array}{}a&b\end{array}",
+    "spec/gt-colors": r"\begin{array}{>{\columncolor{red}}c>\color{blue}c}a&b\end{array}",
+    "spec/gt-braced-color": r"\begin{array}{>{\color{blue}}c c}a&b\end{array}",
+    "spec/gt-bare-columncolor": r"\begin{array}{>\columncolor{red}c c}a&b\end{array}",
+    "spec/gt-nested": r"\begin{array}{>{{\columncolor{red}\columncolor{green}}}c}a\end{array}",
+    "spec/newcolumntype": r"\newcolumntype{C}{>{\columncolor{yellow}}c}\begin{array}{CC|C}a&b&c\end{array}",
+    "spec/newcolumntype-long": r"\newcolumntype{abcdefghijklmnopq}{c}\begin{array}{c}a\end{array}",
+    "spec/newcolumntype-self": r"\newcolumntype{A}{A}\begin{array}{A}a\end{array}",
+    "spec/newcolumntype-grows": r"\newcolumntype{A}{AA}\begin{array}{A}a\end{array}",
+    "spec/newcolumntype-longest": r"\newcolumntype{AB}{l}\newcolumntype{A}{r}\begin{array}{ABA}a&b\end{array}",
+    "spec/newcolumntype-after": r"\begin{array}{C}a\end{array}\newcolumntype{C}{r}",
+    "hline/double": r"\begin{array}{cc}\hline\hline a&b\\\hline c&d\\\hline\hline\end{array}",
+    "hline/in-cell": r"\begin{array}{cc}a\hline&b\end{array}",
+    "hline/only": r"\begin{array}{c}\hline\end{array}",
+    "hline/outside": r"a\hline b",
+    "hline/in-group": r"\begin{array}{c}{\hline}a\end{array}",
+    "hline/rule-color": r"\arrayrulecolor{red}\begin{array}{|c|}\hline a\\\hline\end{array}",
+    "hline/rule-color-after": r"\begin{array}{|c|}\hline a\\\hline\end{array}\arrayrulecolor{blue}",
+    "color/cell": r"\begin{array}{cc}\cellcolor{red}a&b\\c&\cellcolor{green}d\end{array}",
+    "color/row": r"\begin{array}{cc}\rowcolor{yellow}a&b\\c&d\end{array}",
+    "color/in-cell": r"\begin{array}{cc}\color{red}a&b\end{array}",
+    "color/cell-outside": r"\cellcolor{red}a",
+    "color/row-outside": r"\rowcolor{red}a",
+    "color/column-outside": r"\columncolor{red}a",
+    "multicolumn/rules": r"\begin{array}{|c|c|c|}\multicolumn{2}{|c|}{wide text here}&x\\a&b&c\end{array}",
+    "multicolumn/left": r"\begin{array}{ccc}\multicolumn{3}{l}{x}\\a&b&c\end{array}",
+    "multicolumn/right": r"\begin{array}{ccc}\multicolumn{3}{r}{x}\\a&b&c\end{array}",
+    "multicolumn/past-end": r"\begin{array}{cc}a&\multicolumn{5}{c}{x}\\c&d\end{array}",
+    "multicolumn/zero": r"\begin{array}{cc}\multicolumn{0}{c}{x}\end{array}",
+    "multicolumn/too-many": r"\begin{array}{cc}\multicolumn{1001}{c}{x}\end{array}",
+    "multicolumn/outside": r"\multicolumn{2}{c}{x}",
+    "multicolumn/own-rules": r"\begin{array}{|c|c|}\multicolumn{1}{||c||}{x}&y\end{array}",
+    "multicolumn/narrower": r"\begin{array}{cc}\multicolumn{2}{c}{x}\\abcdef&ghijkl\end{array}",
+    "multicolumn/wider": r"\begin{array}{cc}\multicolumn{2}{c}{a long multicolumn}\\a&b\end{array}",
+    "multicolumn/empty": r"\begin{array}{cc}\multicolumn{2}{c}{}\\c&d\end{array}",
+    "hdotsfor/basic": r"\begin{matrix}a&b&c&d\\\hdotsfor{4}\\e&f&g&h\end{matrix}",
+    "hdotsfor/coefficient": r"\begin{matrix}a&b&c\\\hdotsfor[3]{3}\end{matrix}",
+    "hdotsfor/infinite": r"\begin{matrix}a&b\\\hdotsfor[1e99]{2}\end{matrix}",
+    "hdotsfor/zero": r"\begin{matrix}a&b\\\hdotsfor[0]{2}\end{matrix}",
+    "hdotsfor/negative": r"\begin{matrix}a&b\\\hdotsfor[-2]{2}\end{matrix}",
+    "hdotsfor/text": r"\begin{matrix}a&b\\\hdotsfor[x]{2}\end{matrix}",
+    "hdotsfor/one": r"\begin{matrix}a\\\hdotsfor{1}\end{matrix}",
+    "hdotsfor/wide": r"\begin{matrix}aaaaaaaaaaaa&bbbbbbbbbbbbbbbbb\\\hdotsfor{2}\end{matrix}",
+    "hdotsfor/outside": r"\hdotsfor{2}",
+    "multirow/down": r"\begin{array}{cc}\multirow{2}{*}{x}&a\\&b\end{array}",
+    "multirow/up": r"\begin{array}{cc}&a\\\multirow{-2}{*}{x}&b\end{array}",
+    "multirow/up-over-rules": r"\begin{array}{cc}\hline\hline\multirow{-3}{*}{x}&b\end{array}",
+    "multirow/down-over-rules": r"\begin{array}{cc}\multirow{3}{*}{x}&a\\\hline&b\\\hline&c\end{array}",
+    "multirow/past-end": r"\begin{array}{cc}\multirow{20}{*}{x}&a\end{array}",
+    "multirow/tall": r"\begin{array}{cc}\multirow{2}{*}{\frac{\frac{a}{b}}{\frac{c}{d}}}&a\\&b\end{array}",
+    "multirow/zero": r"\begin{array}{cc}\multirow{0}{*}{x}&a\end{array}",
+    "multirow/too-many": r"\begin{array}{cc}\multirow{1001}{*}{x}&a\end{array}",
+    "multirow/outside": r"\multirow{2}{*}{x}",
+    "multirow/under-multicolumn": r"\begin{array}{cc}\multicolumn{2}{c}{y}\\\multirow{-2}{*}{x}&b\end{array}",
+    "multirow/empty": r"\begin{array}{cc}\multirow{2}{*}{}&b\\c&d\end{array}",
+    "multirow/two": r"\begin{array}{ccc}\multirow{2}{*}{x}&a&\multirow{2}{*}{\sum}\\&b&\end{array}",
+    "intertext/align": r"\begin{align}a&=b\intertext{and also}c&=d\end{align}",
+    "intertext/primes": r"\begin{align}a&=b\intertext{f^{\prime} g^{\prime\prime}}c&=d\end{align}",
+    "intertext/outside": r"\intertext{x}",
+    "shove/multline": r"\begin{multline}a+b\\\shoveleft{c+d}\\\shoveright{e}\\f\end{multline}",
+    "shove/empty": r"\shoveleft{}",
+    "cr/top": r"a+b\\c+d\\e",
+    "cr/group": r"x+{a\\b}+y",
+    "cr/nested": r"{a\\{b\\c}}",
+    "cr/after-over": r"a\over b\\c",
+    "cr/in-script": r"\int^{a\\b}_0",
+    "cr/unbalanced": r"{a\\b",
+    "cr/cr": r"a\cr b",
+    "cr/text": r"\text{a\\b}",
+    "cr/in-cell-group": r"\begin{array}{cc}{a\\b}&c\end{array}",
+    "cr/trailing": r"a\\",
+    "alignat/negative": r"\begin{alignat}{-1}a&=b&c&=d&e\end{alignat}",
+    "alignat/max": r"\begin{alignat}{18446744073709551615}a&=b&c&=d&e\end{alignat}",
+    "alignat/overflow": r"\begin{alignat}{18446744073709551616}a&=b&c&=d&e\end{alignat}",
+    "alignat/half": r"\begin{alignat}{9223372036854775808}a&=b\end{alignat}",
+    "alignat/half-plus": r"\begin{alignat}{9223372036854775809}a&=b&c\end{alignat}",
+    "alignat/empty": r"\begin{alignat}{}a&=b\end{alignat}",
+    "alignat/hex": r"\begin{alignat}{0x2}a&=b\end{alignat}",
+    "alignat/minus-zero": r"\begin{alignat}{-0}a&=b\end{alignat}",
+    "alignat/blank": r"\begin{alignedat}{ 2}a&=b&c&=d\end{alignedat}",
+    "multline/two-columns": r"\begin{multline}a&b\end{multline}",
+    "multline/empty": r"\begin{multline}\end{multline}",
+    "gather/empty-rows": r"\begin{gather}\\\end{gather}",
+    "align/eats-next": r"\begin{align}a&=b\end{align}c+d",
+    "smallmatrix/script": r"x^{\begin{smallmatrix}a&b\\c&d\end{smallmatrix}}",
+    "matrix/in-fraction": r"\frac{\begin{matrix}a&b\\c&d\end{matrix}}{\begin{array}{|c|}\hline x\\\hline\end{array}}",
+}
+
+WIDTH_ENVIRONMENTS = {
+    "align": r"\begin{align}a&=b+c&d&=e\\f&=g&h&=i\end{align}",
+    "flalign": r"\begin{flalign}a&=b+c&d&=e\\f&=g&h&=i\end{flalign}",
+    "flalign-pair": r"\begin{flalign}a&=b\end{flalign}",
+    "alignat": r"\begin{alignat}{2}a&=b+c&d&=e\\f&=g&h&=i\end{alignat}",
+    "aligned": r"\begin{aligned}a&=b+c&d&=e\\f&=g&h&=i\end{aligned}",
+    "alignedat": r"\begin{alignedat}{2}a&=b+c&d&=e\end{alignedat}",
+    "multline": r"\begin{multline}a+b+c\\d+e\\f+g+h\end{multline}",
+    "gather": r"\begin{gather}a+b+c\\d\\\shoveright{f}\end{gather}",
+    "gathered": r"\begin{gathered}a+b+c\\d\end{gathered}",
+    "gather-empty": r"\begin{gather}\\a\\\end{gather}",
+    "array": r"\begin{array}{cc}a&b\\\intertext{between}c&d\end{array}",
+    "align-intertext": r"\begin{align}a&=b\intertext{and}c&=d\end{align}",
+}
+
+
+def gen_arrays():
+    for name, tex in ARRAY_CASES.items():
+        add(f"c1/array/{name}", tex)
+    for name, tex in WIDTH_ENVIRONMENTS.items():
+        for width in (4000, WIDTH):
+            add(f"c1/array/width/{name}/{width}", tex, width=width)
+            add(f"c1/array/width/{name}/{width}/inline", tex, display=False, width=width)
+
+
 def gen_symbols(root):
     for kind, atom, name in symbols(root):
         base = f"c1/symbol/{name}"
@@ -374,6 +504,7 @@ def main():
     gen_primitives(root)
     gen_predefined_commands(root)
     gen_environments(root)
+    gen_arrays()
     gen_symbols(root)
     gen_predefined_formulas(root)
     gen_unicode(root)

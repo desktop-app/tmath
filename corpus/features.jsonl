@@ -2396,6 +2396,156 @@
 {"id": "c1/env/equation/0/trailing", "tex": "\\displaystyle \\begin{equation}a&b\\\\c&d\\\\\\end{equation}"}
 {"id": "c1/env/equation/inline", "tex": "x=\\begin{equation}a&b\\\\c&d\\end{equation}"}
 {"id": "c1/env/equation/unclosed", "tex": "\\displaystyle \\begin{equation}a&b"}
+{"id": "c1/array/spec/at-empty", "tex": "\\displaystyle \\begin{array}{@{}c@{}}a\\\\b\\end{array}"}
+{"id": "c1/array/spec/at-many", "tex": "\\displaystyle \\begin{array}{c@{:}c@{-}c}a&b&c\\\\d&e&f\\end{array}"}
+{"id": "c1/array/spec/at-past-cols", "tex": "\\displaystyle \\begin{array}{c@{x}c@{y}c@{z}}a&b\\end{array}"}
+{"id": "c1/array/spec/at-short-row", "tex": "\\displaystyle \\begin{array}{ccc@{x}}\\\\a&b&c\\end{array}"}
+{"id": "c1/array/spec/at-group", "tex": "\\displaystyle \\begin{array}{c@{\\quad\\frac12}c}a&b\\end{array}"}
+{"id": "c1/array/spec/star", "tex": "\\displaystyle \\begin{array}{*{3}{c|}}a&b&c\\end{array}"}
+{"id": "c1/array/spec/star-zero", "tex": "\\displaystyle \\begin{array}{*{0}{c}c}a\\end{array}"}
+{"id": "c1/array/spec/star-negative", "tex": "\\displaystyle \\begin{array}{*{-1}{c}}a\\end{array}"}
+{"id": "c1/array/spec/star-too-many", "tex": "\\displaystyle \\begin{array}{*{1001}{c}}a\\end{array}"}
+{"id": "c1/array/spec/star-too-long", "tex": "\\displaystyle \\begin{array}{*{1000}{cccccccccccc}}a\\end{array}"}
+{"id": "c1/array/spec/star-nested", "tex": "\\displaystyle \\begin{array}{*{2}{*{2}{l}r}}a&b&c&d&e&f\\end{array}"}
+{"id": "c1/array/spec/vlines", "tex": "\\displaystyle \\begin{array}{||c|||c||}a&b\\\\c&d\\end{array}"}
+{"id": "c1/array/spec/more-cells", "tex": "\\displaystyle \\begin{array}{c}a&b&c\\end{array}"}
+{"id": "c1/array/spec/more-columns", "tex": "\\displaystyle \\begin{array}{lcrlcr}a&b\\end{array}"}
+{"id": "c1/array/spec/blanks", "tex": "\\displaystyle \\begin{array}{ l\tc r }a&b&c\\end{array}"}
+{"id": "c1/array/spec/unknown", "tex": "\\displaystyle \\begin{array}{xyz}a&b&c\\end{array}"}
+{"id": "c1/array/spec/empty", "tex": "\\displaystyle \\begin{array}{}a&b\\end{array}"}
+{"id": "c1/array/spec/gt-colors", "tex": "\\displaystyle \\begin{array}{>{\\columncolor{red}}c>\\color{blue}c}a&b\\end{array}"}
+{"id": "c1/array/spec/gt-braced-color", "tex": "\\displaystyle \\begin{array}{>{\\color{blue}}c c}a&b\\end{array}"}
+{"id": "c1/array/spec/gt-bare-columncolor", "tex": "\\displaystyle \\begin{array}{>\\columncolor{red}c c}a&b\\end{array}"}
+{"id": "c1/array/spec/gt-nested", "tex": "\\displaystyle \\begin{array}{>{{\\columncolor{red}\\columncolor{green}}}c}a\\end{array}"}
+{"id": "c1/array/spec/newcolumntype", "tex": "\\displaystyle \\newcolumntype{C}{>{\\columncolor{yellow}}c}\\begin{array}{CC|C}a&b&c\\end{array}"}
+{"id": "c1/array/spec/newcolumntype-long", "tex": "\\displaystyle \\newcolumntype{abcdefghijklmnopq}{c}\\begin{array}{c}a\\end{array}"}
+{"id": "c1/array/spec/newcolumntype-self", "tex": "\\displaystyle \\newcolumntype{A}{A}\\begin{array}{A}a\\end{array}"}
+{"id": "c1/array/spec/newcolumntype-grows", "tex": "\\displaystyle \\newcolumntype{A}{AA}\\begin{array}{A}a\\end{array}"}
+{"id": "c1/array/spec/newcolumntype-longest", "tex": "\\displaystyle \\newcolumntype{AB}{l}\\newcolumntype{A}{r}\\begin{array}{ABA}a&b\\end{array}"}
+{"id": "c1/array/spec/newcolumntype-after", "tex": "\\displaystyle \\begin{array}{C}a\\end{array}\\newcolumntype{C}{r}"}
+{"id": "c1/array/hline/double", "tex": "\\displaystyle \\begin{array}{cc}\\hline\\hline a&b\\\\\\hline c&d\\\\\\hline\\hline\\end{array}"}
+{"id": "c1/array/hline/in-cell", "tex": "\\displaystyle \\begin{array}{cc}a\\hline&b\\end{array}"}
+{"id": "c1/array/hline/only", "tex": "\\displaystyle \\begin{array}{c}\\hline\\end{array}"}
+{"id": "c1/array/hline/outside", "tex": "\\displaystyle a\\hline b"}
+{"id": "c1/array/hline/in-group", "tex": "\\displaystyle \\begin{array}{c}{\\hline}a\\end{array}"}
+{"id": "c1/array/hline/rule-color", "tex": "\\displaystyle \\arrayrulecolor{red}\\begin{array}{|c|}\\hline a\\\\\\hline\\end{array}"}
+{"id": "c1/array/hline/rule-color-after", "tex": "\\displaystyle \\begin{array}{|c|}\\hline a\\\\\\hline\\end{array}\\arrayrulecolor{blue}"}
+{"id": "c1/array/color/cell", "tex": "\\displaystyle \\begin{array}{cc}\\cellcolor{red}a&b\\\\c&\\cellcolor{green}d\\end{array}"}
+{"id": "c1/array/color/row", "tex": "\\displaystyle \\begin{array}{cc}\\rowcolor{yellow}a&b\\\\c&d\\end{array}"}
+{"id": "c1/array/color/in-cell", "tex": "\\displaystyle \\begin{array}{cc}\\color{red}a&b\\end{array}"}
+{"id": "c1/array/color/cell-outside", "tex": "\\displaystyle \\cellcolor{red}a"}
+{"id": "c1/array/color/row-outside", "tex": "\\displaystyle \\rowcolor{red}a"}
+{"id": "c1/array/color/column-outside", "tex": "\\displaystyle \\columncolor{red}a"}
+{"id": "c1/array/multicolumn/rules", "tex": "\\displaystyle \\begin{array}{|c|c|c|}\\multicolumn{2}{|c|}{wide text here}&x\\\\a&b&c\\end{array}"}
+{"id": "c1/array/multicolumn/left", "tex": "\\displaystyle \\begin{array}{ccc}\\multicolumn{3}{l}{x}\\\\a&b&c\\end{array}"}
+{"id": "c1/array/multicolumn/right", "tex": "\\displaystyle \\begin{array}{ccc}\\multicolumn{3}{r}{x}\\\\a&b&c\\end{array}"}
+{"id": "c1/array/multicolumn/past-end", "tex": "\\displaystyle \\begin{array}{cc}a&\\multicolumn{5}{c}{x}\\\\c&d\\end{array}"}
+{"id": "c1/array/multicolumn/zero", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{0}{c}{x}\\end{array}"}
+{"id": "c1/array/multicolumn/too-many", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{1001}{c}{x}\\end{array}"}
+{"id": "c1/array/multicolumn/outside", "tex": "\\displaystyle \\multicolumn{2}{c}{x}"}
+{"id": "c1/array/multicolumn/own-rules", "tex": "\\displaystyle \\begin{array}{|c|c|}\\multicolumn{1}{||c||}{x}&y\\end{array}"}
+{"id": "c1/array/multicolumn/narrower", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{2}{c}{x}\\\\abcdef&ghijkl\\end{array}"}
+{"id": "c1/array/multicolumn/wider", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{2}{c}{a long multicolumn}\\\\a&b\\end{array}"}
+{"id": "c1/array/multicolumn/empty", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{2}{c}{}\\\\c&d\\end{array}"}
+{"id": "c1/array/hdotsfor/basic", "tex": "\\displaystyle \\begin{matrix}a&b&c&d\\\\\\hdotsfor{4}\\\\e&f&g&h\\end{matrix}"}
+{"id": "c1/array/hdotsfor/coefficient", "tex": "\\displaystyle \\begin{matrix}a&b&c\\\\\\hdotsfor[3]{3}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/infinite", "tex": "\\displaystyle \\begin{matrix}a&b\\\\\\hdotsfor[1e99]{2}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/zero", "tex": "\\displaystyle \\begin{matrix}a&b\\\\\\hdotsfor[0]{2}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/negative", "tex": "\\displaystyle \\begin{matrix}a&b\\\\\\hdotsfor[-2]{2}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/text", "tex": "\\displaystyle \\begin{matrix}a&b\\\\\\hdotsfor[x]{2}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/one", "tex": "\\displaystyle \\begin{matrix}a\\\\\\hdotsfor{1}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/wide", "tex": "\\displaystyle \\begin{matrix}aaaaaaaaaaaa&bbbbbbbbbbbbbbbbb\\\\\\hdotsfor{2}\\end{matrix}"}
+{"id": "c1/array/hdotsfor/outside", "tex": "\\displaystyle \\hdotsfor{2}"}
+{"id": "c1/array/multirow/down", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{2}{*}{x}&a\\\\&b\\end{array}"}
+{"id": "c1/array/multirow/up", "tex": "\\displaystyle \\begin{array}{cc}&a\\\\\\multirow{-2}{*}{x}&b\\end{array}"}
+{"id": "c1/array/multirow/up-over-rules", "tex": "\\displaystyle \\begin{array}{cc}\\hline\\hline\\multirow{-3}{*}{x}&b\\end{array}"}
+{"id": "c1/array/multirow/down-over-rules", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{3}{*}{x}&a\\\\\\hline&b\\\\\\hline&c\\end{array}"}
+{"id": "c1/array/multirow/past-end", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{20}{*}{x}&a\\end{array}"}
+{"id": "c1/array/multirow/tall", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{2}{*}{\\frac{\\frac{a}{b}}{\\frac{c}{d}}}&a\\\\&b\\end{array}"}
+{"id": "c1/array/multirow/zero", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{0}{*}{x}&a\\end{array}"}
+{"id": "c1/array/multirow/too-many", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{1001}{*}{x}&a\\end{array}"}
+{"id": "c1/array/multirow/outside", "tex": "\\displaystyle \\multirow{2}{*}{x}"}
+{"id": "c1/array/multirow/under-multicolumn", "tex": "\\displaystyle \\begin{array}{cc}\\multicolumn{2}{c}{y}\\\\\\multirow{-2}{*}{x}&b\\end{array}"}
+{"id": "c1/array/multirow/empty", "tex": "\\displaystyle \\begin{array}{cc}\\multirow{2}{*}{}&b\\\\c&d\\end{array}"}
+{"id": "c1/array/multirow/two", "tex": "\\displaystyle \\begin{array}{ccc}\\multirow{2}{*}{x}&a&\\multirow{2}{*}{\\sum}\\\\&b&\\end{array}"}
+{"id": "c1/array/intertext/align", "tex": "\\displaystyle \\begin{align}a&=b\\intertext{and also}c&=d\\end{align}"}
+{"id": "c1/array/intertext/primes", "tex": "\\displaystyle \\begin{align}a&=b\\intertext{f^{\\prime} g^{\\prime\\prime}}c&=d\\end{align}"}
+{"id": "c1/array/intertext/outside", "tex": "\\displaystyle \\intertext{x}"}
+{"id": "c1/array/shove/multline", "tex": "\\displaystyle \\begin{multline}a+b\\\\\\shoveleft{c+d}\\\\\\shoveright{e}\\\\f\\end{multline}"}
+{"id": "c1/array/shove/empty", "tex": "\\displaystyle \\shoveleft{}"}
+{"id": "c1/array/cr/top", "tex": "\\displaystyle a+b\\\\c+d\\\\e"}
+{"id": "c1/array/cr/group", "tex": "\\displaystyle x+{a\\\\b}+y"}
+{"id": "c1/array/cr/nested", "tex": "\\displaystyle {a\\\\{b\\\\c}}"}
+{"id": "c1/array/cr/after-over", "tex": "\\displaystyle a\\over b\\\\c"}
+{"id": "c1/array/cr/in-script", "tex": "\\displaystyle \\int^{a\\\\b}_0"}
+{"id": "c1/array/cr/unbalanced", "tex": "\\displaystyle {a\\\\b"}
+{"id": "c1/array/cr/cr", "tex": "\\displaystyle a\\cr b"}
+{"id": "c1/array/cr/text", "tex": "\\displaystyle \\text{a\\\\b}"}
+{"id": "c1/array/cr/in-cell-group", "tex": "\\displaystyle \\begin{array}{cc}{a\\\\b}&c\\end{array}"}
+{"id": "c1/array/cr/trailing", "tex": "\\displaystyle a\\\\"}
+{"id": "c1/array/alignat/negative", "tex": "\\displaystyle \\begin{alignat}{-1}a&=b&c&=d&e\\end{alignat}"}
+{"id": "c1/array/alignat/max", "tex": "\\displaystyle \\begin{alignat}{18446744073709551615}a&=b&c&=d&e\\end{alignat}"}
+{"id": "c1/array/alignat/overflow", "tex": "\\displaystyle \\begin{alignat}{18446744073709551616}a&=b&c&=d&e\\end{alignat}"}
+{"id": "c1/array/alignat/half", "tex": "\\displaystyle \\begin{alignat}{9223372036854775808}a&=b\\end{alignat}"}
+{"id": "c1/array/alignat/half-plus", "tex": "\\displaystyle \\begin{alignat}{9223372036854775809}a&=b&c\\end{alignat}"}
+{"id": "c1/array/alignat/empty", "tex": "\\displaystyle \\begin{alignat}{}a&=b\\end{alignat}"}
+{"id": "c1/array/alignat/hex", "tex": "\\displaystyle \\begin{alignat}{0x2}a&=b\\end{alignat}"}
+{"id": "c1/array/alignat/minus-zero", "tex": "\\displaystyle \\begin{alignat}{-0}a&=b\\end{alignat}"}
+{"id": "c1/array/alignat/blank", "tex": "\\displaystyle \\begin{alignedat}{ 2}a&=b&c&=d\\end{alignedat}"}
+{"id": "c1/array/multline/two-columns", "tex": "\\displaystyle \\begin{multline}a&b\\end{multline}"}
+{"id": "c1/array/multline/empty", "tex": "\\displaystyle \\begin{multline}\\end{multline}"}
+{"id": "c1/array/gather/empty-rows", "tex": "\\displaystyle \\begin{gather}\\\\\\end{gather}"}
+{"id": "c1/array/align/eats-next", "tex": "\\displaystyle \\begin{align}a&=b\\end{align}c+d"}
+{"id": "c1/array/smallmatrix/script", "tex": "\\displaystyle x^{\\begin{smallmatrix}a&b\\\\c&d\\end{smallmatrix}}"}
+{"id": "c1/array/matrix/in-fraction", "tex": "\\displaystyle \\frac{\\begin{matrix}a&b\\\\c&d\\end{matrix}}{\\begin{array}{|c|}\\hline x\\\\\\hline\\end{array}}"}
+{"id": "c1/array/width/align/4000", "tex": "\\displaystyle \\begin{align}a&=b+c&d&=e\\\\f&=g&h&=i\\end{align}", "width": 4000}
+{"id": "c1/array/width/align/4000/inline", "tex": "\\begin{align}a&=b+c&d&=e\\\\f&=g&h&=i\\end{align}", "width": 4000}
+{"id": "c1/array/width/align/38400", "tex": "\\displaystyle \\begin{align}a&=b+c&d&=e\\\\f&=g&h&=i\\end{align}", "width": 38400}
+{"id": "c1/array/width/align/38400/inline", "tex": "\\begin{align}a&=b+c&d&=e\\\\f&=g&h&=i\\end{align}", "width": 38400}
+{"id": "c1/array/width/flalign/4000", "tex": "\\displaystyle \\begin{flalign}a&=b+c&d&=e\\\\f&=g&h&=i\\end{flalign}", "width": 4000}
+{"id": "c1/array/width/flalign/4000/inline", "tex": "\\begin{flalign}a&=b+c&d&=e\\\\f&=g&h&=i\\end{flalign}", "width": 4000}
+{"id": "c1/array/width/flalign/38400", "tex": "\\displaystyle \\begin{flalign}a&=b+c&d&=e\\\\f&=g&h&=i\\end{flalign}", "width": 38400}
+{"id": "c1/array/width/flalign/38400/inline", "tex": "\\begin{flalign}a&=b+c&d&=e\\\\f&=g&h&=i\\end{flalign}", "width": 38400}
+{"id": "c1/array/width/flalign-pair/4000", "tex": "\\displaystyle \\begin{flalign}a&=b\\end{flalign}", "width": 4000}
+{"id": "c1/array/width/flalign-pair/4000/inline", "tex": "\\begin{flalign}a&=b\\end{flalign}", "width": 4000}
+{"id": "c1/array/width/flalign-pair/38400", "tex": "\\displaystyle \\begin{flalign}a&=b\\end{flalign}", "width": 38400}
+{"id": "c1/array/width/flalign-pair/38400/inline", "tex": "\\begin{flalign}a&=b\\end{flalign}", "width": 38400}
+{"id": "c1/array/width/alignat/4000", "tex": "\\displaystyle \\begin{alignat}{2}a&=b+c&d&=e\\\\f&=g&h&=i\\end{alignat}", "width": 4000}
+{"id": "c1/array/width/alignat/4000/inline", "tex": "\\begin{alignat}{2}a&=b+c&d&=e\\\\f&=g&h&=i\\end{alignat}", "width": 4000}
+{"id": "c1/array/width/alignat/38400", "tex": "\\displaystyle \\begin{alignat}{2}a&=b+c&d&=e\\\\f&=g&h&=i\\end{alignat}", "width": 38400}
+{"id": "c1/array/width/alignat/38400/inline", "tex": "\\begin{alignat}{2}a&=b+c&d&=e\\\\f&=g&h&=i\\end{alignat}", "width": 38400}
+{"id": "c1/array/width/aligned/4000", "tex": "\\displaystyle \\begin{aligned}a&=b+c&d&=e\\\\f&=g&h&=i\\end{aligned}", "width": 4000}
+{"id": "c1/array/width/aligned/4000/inline", "tex": "\\begin{aligned}a&=b+c&d&=e\\\\f&=g&h&=i\\end{aligned}", "width": 4000}
+{"id": "c1/array/width/aligned/38400", "tex": "\\displaystyle \\begin{aligned}a&=b+c&d&=e\\\\f&=g&h&=i\\end{aligned}", "width": 38400}
+{"id": "c1/array/width/aligned/38400/inline", "tex": "\\begin{aligned}a&=b+c&d&=e\\\\f&=g&h&=i\\end{aligned}", "width": 38400}
+{"id": "c1/array/width/alignedat/4000", "tex": "\\displaystyle \\begin{alignedat}{2}a&=b+c&d&=e\\end{alignedat}", "width": 4000}
+{"id": "c1/array/width/alignedat/4000/inline", "tex": "\\begin{alignedat}{2}a&=b+c&d&=e\\end{alignedat}", "width": 4000}
+{"id": "c1/array/width/alignedat/38400", "tex": "\\displaystyle \\begin{alignedat}{2}a&=b+c&d&=e\\end{alignedat}", "width": 38400}
+{"id": "c1/array/width/alignedat/38400/inline", "tex": "\\begin{alignedat}{2}a&=b+c&d&=e\\end{alignedat}", "width": 38400}
+{"id": "c1/array/width/multline/4000", "tex": "\\displaystyle \\begin{multline}a+b+c\\\\d+e\\\\f+g+h\\end{multline}", "width": 4000}
+{"id": "c1/array/width/multline/4000/inline", "tex": "\\begin{multline}a+b+c\\\\d+e\\\\f+g+h\\end{multline}", "width": 4000}
+{"id": "c1/array/width/multline/38400", "tex": "\\displaystyle \\begin{multline}a+b+c\\\\d+e\\\\f+g+h\\end{multline}", "width": 38400}
+{"id": "c1/array/width/multline/38400/inline", "tex": "\\begin{multline}a+b+c\\\\d+e\\\\f+g+h\\end{multline}", "width": 38400}
+{"id": "c1/array/width/gather/4000", "tex": "\\displaystyle \\begin{gather}a+b+c\\\\d\\\\\\shoveright{f}\\end{gather}", "width": 4000}
+{"id": "c1/array/width/gather/4000/inline", "tex": "\\begin{gather}a+b+c\\\\d\\\\\\shoveright{f}\\end{gather}", "width": 4000}
+{"id": "c1/array/width/gather/38400", "tex": "\\displaystyle \\begin{gather}a+b+c\\\\d\\\\\\shoveright{f}\\end{gather}", "width": 38400}
+{"id": "c1/array/width/gather/38400/inline", "tex": "\\begin{gather}a+b+c\\\\d\\\\\\shoveright{f}\\end{gather}", "width": 38400}
+{"id": "c1/array/width/gathered/4000", "tex": "\\displaystyle \\begin{gathered}a+b+c\\\\d\\end{gathered}", "width": 4000}
+{"id": "c1/array/width/gathered/4000/inline", "tex": "\\begin{gathered}a+b+c\\\\d\\end{gathered}", "width": 4000}
+{"id": "c1/array/width/gathered/38400", "tex": "\\displaystyle \\begin{gathered}a+b+c\\\\d\\end{gathered}", "width": 38400}
+{"id": "c1/array/width/gathered/38400/inline", "tex": "\\begin{gathered}a+b+c\\\\d\\end{gathered}", "width": 38400}
+{"id": "c1/array/width/gather-empty/4000", "tex": "\\displaystyle \\begin{gather}\\\\a\\\\\\end{gather}", "width": 4000}
+{"id": "c1/array/width/gather-empty/4000/inline", "tex": "\\begin{gather}\\\\a\\\\\\end{gather}", "width": 4000}
+{"id": "c1/array/width/gather-empty/38400", "tex": "\\displaystyle \\begin{gather}\\\\a\\\\\\end{gather}", "width": 38400}
+{"id": "c1/array/width/gather-empty/38400/inline", "tex": "\\begin{gather}\\\\a\\\\\\end{gather}", "width": 38400}
+{"id": "c1/array/width/array/4000", "tex": "\\displaystyle \\begin{array}{cc}a&b\\\\\\intertext{between}c&d\\end{array}", "width": 4000}
+{"id": "c1/array/width/array/4000/inline", "tex": "\\begin{array}{cc}a&b\\\\\\intertext{between}c&d\\end{array}", "width": 4000}
+{"id": "c1/array/width/array/38400", "tex": "\\displaystyle \\begin{array}{cc}a&b\\\\\\intertext{between}c&d\\end{array}", "width": 38400}
+{"id": "c1/array/width/array/38400/inline", "tex": "\\begin{array}{cc}a&b\\\\\\intertext{between}c&d\\end{array}", "width": 38400}
+{"id": "c1/array/width/align-intertext/4000", "tex": "\\displaystyle \\begin{align}a&=b\\intertext{and}c&=d\\end{align}", "width": 4000}
+{"id": "c1/array/width/align-intertext/4000/inline", "tex": "\\begin{align}a&=b\\intertext{and}c&=d\\end{align}", "width": 4000}
+{"id": "c1/array/width/align-intertext/38400", "tex": "\\displaystyle \\begin{align}a&=b\\intertext{and}c&=d\\end{align}", "width": 38400}
+{"id": "c1/array/width/align-intertext/38400/inline", "tex": "\\begin{align}a&=b\\intertext{and}c&=d\\end{align}", "width": 38400}
 {"id": "c1/symbol/ae/displaystyle", "tex": "\\displaystyle\\ae"}
 {"id": "c1/symbol/ae/textstyle", "tex": "\\textstyle\\ae"}
 {"id": "c1/symbol/ae/scriptstyle", "tex": "\\scriptstyle\\ae"}

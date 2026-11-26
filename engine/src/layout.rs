@@ -21,7 +21,7 @@ const PLAIN: i32 = 0;
 const BOLD: i32 = 1;
 const ITALIC: i32 = 2;
 
-fn null_atom() -> Error {
+pub(crate) fn null_atom() -> Error {
     Error::invalid_state("A required atom is missing.")
 }
 
@@ -333,6 +333,20 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
             valign,
             halign,
         } => vrow_box(ctx, &elements, &raise, add_interline, valign, halign, env),
+        AtomKind::Matrix(m) => crate::matrix::matrix_box(ctx, &m, env),
+        AtomKind::Multline {
+            array,
+            line_type,
+            partial,
+        } => crate::matrix::multline_box(ctx, &array, line_type, partial, env),
+        AtomKind::Hline {
+            width,
+            shift,
+            color,
+        } => crate::matrix::hline_box(ctx, width, shift, color, env),
+        AtomKind::CellSpecifier { .. } => ctx.boxes.strut(0.0, 0.0, 0.0, 0.0),
+        AtomKind::Multicolumn(data) => crate::matrix::multicolumn_box(ctx, data, env),
+        AtomKind::MultiRow { rows, .. } => crate::matrix::multirow_box(ctx, rows, env),
         AtomKind::FBox { base, bg, line } => {
             let b = create_box(ctx, base, env)?;
             let drt = env
@@ -422,7 +436,7 @@ fn symbol_box(
     Ok(cb)
 }
 
-fn space_box(ctx: &mut Ctx, data: &SpaceData, env: &mut Environment) -> Result<BoxId> {
+pub(crate) fn space_box(ctx: &mut Ctx, data: &SpaceData, env: &mut Environment) -> Result<BoxId> {
     if !data.blank_space {
         let w = data.width * unit_factor(data.w_unit, env);
         let h = data.height * unit_factor(data.h_unit, env);
@@ -438,7 +452,7 @@ fn space_box(ctx: &mut Ctx, data: &SpaceData, env: &mut Environment) -> Result<B
 
 /// `SpaceAtom(unit, w, h, d).createBox(env)` for the temporaries the C++
 /// builds on the stack.
-fn space_of(
+pub(crate) fn space_of(
     ctx: &mut Ctx,
     unit: Unit,
     w: f32,

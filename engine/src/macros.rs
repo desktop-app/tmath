@@ -17,6 +17,7 @@ use crate::error::{Error, Result};
 use crate::font::TexStyle;
 use crate::layout::new_fraction;
 use crate::layout::{new_fraction_with, new_under_over_one};
+use crate::matrix::{self, MulticolumnData};
 use crate::numparse::{read_float, read_hex_u32};
 use crate::parser::{Args, Parser, new_color, new_cumulative_scripts, parse_arg, parse_sub};
 use crate::tables::{self, MacroKind};
@@ -570,7 +571,11 @@ fn call(
         }
         "color" => {
             if tp.is_array_mode() {
-                return Err(unsupported(ctx, "\\color in arrays"));
+                let color = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+                return Ok(Some(ctx.atom(AtomKind::CellSpecifier {
+                    color,
+                    foreground: true,
+                })));
             }
             Ok(None)
         }
@@ -734,6 +739,138 @@ fn call(
         }
         "sfrac" => sfrac(tp, ctx, args),
         "genfrac" => genfrac(tp, ctx, args),
+        "cr" | "\\" => matrix::cr(tp, ctx),
+        "smallmatrix@@env" | "matrix@@env" | "array@@env" | "align@@env" | "flalign@@env"
+        | "alignat@@env" | "aligned@@env" | "alignedat@@env" | "multline@@env" | "gather@@env"
+        | "gathered@@env" => matrix::environment(name, tp, ctx, args),
+        "multicolumn" | "hdotsfor" => {
+            if !tp.is_array_mode() {
+                return Err(Error::parse(format!(
+                    "Command '{name}' only available in array mode!"
+                )));
+            }
+            let n = value_of_int(&args[1]);
+            if n <= 0 || n > MAX_ARRAY_COLUMN_SPAN {
+                return Err(Error::parse(format!("Bad column span in {name}!")));
+            }
+            let data = if name == "multicolumn" {
+                let align = wstr::narrow_bytes(&args[2]);
+                let cols = parse_arg(ctx, tp, args[3].clone(), true)?;
+                MulticolumnData::new(n, &align, cols)
+            } else {
+                let mut f = 1.0;
+                if !args[2].is_empty() {
+                    f = float_of_wide(ctx, &args[2]);
+                }
+                if !f.is_finite() {
+                    f = 1.0;
+                }
+                let dots = ctx.symbol("ldotp")?;
+                let mut data = MulticolumnData::new(n, b"c", Some(dots));
+                data.hdots = Some(f);
+                data
+            };
+            let atom = ctx.atom(AtomKind::Multicolumn(data));
+            tp.add_atom(ctx, Some(atom));
+            tp.formula.add_col_n(n)?;
+            Ok(None)
+        }
+        "multirow" => {
+            if !tp.is_array_mode() {
+                return Err(Error::parse(
+                    "Command \\multirow must used in array environment!",
+                ));
+            }
+            let n = value_of_int(&args[1]);
+            if !(-MAX_ARRAY_ROW_SPAN..=MAX_ARRAY_ROW_SPAN).contains(&n) {
+                return Err(Error::parse("Bad row span in multirow!"));
+            }
+            let rows = parse_arg(ctx, tp, args[3].clone(), true)?;
+            let atom = ctx.atom(AtomKind::MultiRow {
+                rows,
+                i: 0,
+                j: 0,
+                n: if n == 0 { 1 } else { n },
+            });
+            tp.add_atom(ctx, Some(atom));
+            Ok(None)
+        }
+        "hline" => {
+            if !tp.is_array_mode() {
+                return Err(Error::parse(
+                    "The macro \\hline only available in array mode!",
+                ));
+            }
+            Ok(Some(ctx.atom(AtomKind::Hline {
+                width: 0.0,
+                shift: 0.0,
+                color: TRANSPARENT,
+            })))
+        }
+        "cellcolor" | "rowcolor" => {
+            if !tp.is_array_mode() {
+                return Err(Error::parse(format!(
+                    "Command \\{name} must used in array environment!"
+                )));
+            }
+            let color = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            let atom = ctx.atom(AtomKind::CellSpecifier {
+                color,
+                foreground: false,
+            });
+            if name == "cellcolor" {
+                tp.formula.add_cell_specifier(atom)?;
+            } else {
+                tp.formula.add_row_specifier(atom)?;
+            }
+            Ok(None)
+        }
+        "columncolor" => {
+            let color = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            Ok(Some(ctx.atom(AtomKind::CellSpecifier {
+                color,
+                foreground: false,
+            })))
+        }
+        "arrayrulecolor" => {
+            ctx.line_color = color_of(ctx, &wstr::narrow_bytes(&args[1]));
+            Ok(None)
+        }
+        "newcolumntype" => {
+            if args[1].len() > 16 {
+                return Err(Error::parse("Column type name is too long!"));
+            }
+            ctx.column_types.insert(args[1].clone(), args[2].clone());
+            Ok(None)
+        }
+        "intertext" => {
+            if !tp.is_array_mode() {
+                return Err(Error::parse(
+                    "Command \\intertext must used in array environment!",
+                ));
+            }
+            let mut text = args[1].clone();
+            wstr::replace_all(&mut text, &w("^{\\prime}"), &w("'"));
+            wstr::replace_all(&mut text, &w("^{\\prime\\prime}"), &w("''"));
+            let root = parse_sub(ctx, tp, text, "mathnormal", false, false)?.root;
+            let roman = ctx.atom(AtomKind::Roman { base: root });
+            ctx.get_mut(roman).atom_type = AtomType::InterText;
+            tp.add_atom(ctx, Some(roman));
+            tp.add_row()?;
+            Ok(None)
+        }
+        "shoveright" | "shoveleft" => {
+            let Some(a) = parse_arg(ctx, tp, args[1].clone(), true)? else {
+                return Ok(None);
+            };
+            let copy = ctx.private_copy(a);
+            ctx.get_mut(copy).alignment = if name == "shoveright" {
+                Alignment::Right
+            } else {
+                Alignment::Left
+            };
+            Ok(Some(copy))
+        }
         "joinrel" => {
             let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
             Ok(Some(new_typed(
@@ -1132,4 +1269,19 @@ fn genfrac(tp: &mut Parser, ctx: &mut Ctx, args: &mut Args) -> Result<Option<Ato
     let row = ctx.new_row();
     ctx.row_add(row, Some(styled));
     Ok(Some(row))
+}
+
+/// `kMaxArrayColumnSpan`.
+const MAX_ARRAY_COLUMN_SPAN: i32 = 1000;
+/// `kMaxArrayRowSpan`.
+const MAX_ARRAY_ROW_SPAN: i32 = 1000;
+
+/// `valueof(str, float&)` on a wide string: a character outside ASCII ends
+/// the number as any other character that cannot continue it does.
+fn float_of_wide(ctx: &mut Ctx, s: &[u16]) -> f32 {
+    let bytes: Vec<u8> = s
+        .iter()
+        .map(|&c| if c < 0x80 { c as u8 } else { 0x80 })
+        .collect();
+    float_of(ctx, &bytes)
 }

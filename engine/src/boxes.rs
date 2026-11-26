@@ -204,6 +204,7 @@ pub trait Measure {
 pub struct Boxes {
     nodes: Vec<BoxNode>,
     used: i32,
+    null: Option<BoxId>,
 }
 
 impl Boxes {
@@ -280,6 +281,18 @@ impl Boxes {
     pub fn neg_width(&mut self, id: BoxId) {
         let b = self.get_mut(id);
         b.width = -b.width;
+    }
+
+    /// `MatrixAtom::_nullbox`: one empty box shared by every empty cell. The
+    /// C++ makes it once, before any budget counts, so it costs nothing.
+    pub fn null_box(&mut self) -> BoxId {
+        if let Some(id) = self.null {
+            return id;
+        }
+        let id = BoxId(self.nodes.len() as u32);
+        self.nodes.push(BoxNode::new(BoxKind::Strut));
+        self.null = Some(id);
+        id
     }
 
     /// `StrutBox(width, height, depth, shift)`.

@@ -12,6 +12,7 @@ pub mod font;
 pub mod glue;
 pub mod layout;
 pub mod macros;
+pub mod matrix;
 pub mod numparse;
 pub mod parser;
 pub mod render;

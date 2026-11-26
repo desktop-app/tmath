@@ -204,6 +204,23 @@ pub enum AtomKind {
     Bold {
         base: Option<AtomId>,
     },
+    /// `ItAtom`.
+    It {
+        base: Option<AtomId>,
+    },
+    /// `SsAtom`: sans serif while laying out `base`.
+    Ss {
+        base: Option<AtomId>,
+    },
+    /// `TtAtom`: typewriter while laying out `base`.
+    Tt {
+        base: Option<AtomId>,
+    },
+    /// `TextStyleAtom`: a math alphabet (`mathbb`, `mathcal`, ...).
+    TextStyle {
+        style: &'static str,
+        at: Option<AtomId>,
+    },
     /// `ColorAtom`: `elements` is a row.
     Color {
         background: u32,
@@ -237,6 +254,27 @@ pub enum AtomKind {
     },
     UnderScore,
     UnderOver(Box<UnderOverData>),
+    /// `BigDelimiterAtom`: `delim` is a symbol.
+    BigDelimiter {
+        delim: AtomId,
+        size: i32,
+    },
+    /// `FencedAtom`: `left` and `right` are symbols, `middle` are `Middle`s.
+    Fenced {
+        base: AtomId,
+        left: Option<AtomId>,
+        right: Option<AtomId>,
+        middle: Vec<AtomId>,
+    },
+    /// `NthRoot`.
+    NthRoot {
+        base: AtomId,
+        root: AtomId,
+    },
+    /// `TextCircledAtom`.
+    TextCircled {
+        at: AtomId,
+    },
     /// `MiddleAtom`.
     Middle {
         base: Option<AtomId>,
@@ -468,6 +506,7 @@ impl<'a> Ctx<'a> {
                 self.left_type(*elements)
             }
             AtomKind::Typed { left, .. } => *left,
+            AtomKind::Fenced { .. } => AtomType::Inner,
             AtomKind::UnderOver(data) => {
                 data.base.map_or(AtomType::Ordinary, |b| self.left_type(b))
             }
@@ -488,6 +527,7 @@ impl<'a> Ctx<'a> {
                 self.right_type(*elements)
             }
             AtomKind::Typed { right, .. } => *right,
+            AtomKind::Fenced { .. } => AtomType::Inner,
             AtomKind::UnderOver(data) => {
                 data.base.map_or(AtomType::Ordinary, |b| self.right_type(b))
             }

@@ -176,6 +176,36 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
                 create_box(ctx, base, &mut e)
             }
         },
+        AtomKind::It { base } => match base {
+            None => ctx.boxes.strut(0.0, 0.0, 0.0, 0.0),
+            Some(base) => {
+                let mut font = env.font;
+                font.it = true;
+                let mut e = env.copy_with_font(font);
+                create_box(ctx, base, &mut e)
+            }
+        },
+        AtomKind::Ss { base } => {
+            let previous = env.font.ss;
+            env.font.ss = true;
+            let result = create_box(ctx, base.ok_or_else(null_atom)?, env);
+            env.font.ss = previous;
+            result
+        }
+        AtomKind::Tt { base } => {
+            let previous = env.font.tt;
+            env.font.tt = true;
+            let result = create_box(ctx, base.ok_or_else(null_atom)?, env);
+            env.font.tt = previous;
+            result
+        }
+        AtomKind::TextStyle { style, at } => {
+            let previous = env.text_style;
+            env.text_style = style;
+            let result = create_box(ctx, at.ok_or_else(null_atom)?, env);
+            env.text_style = previous;
+            result
+        }
         AtomKind::Color {
             background,
             color,
@@ -229,6 +259,35 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
         }
         AtomKind::Middle { r#box, .. } => Ok(r#box),
         AtomKind::UnderOver(data) => under_over_box(ctx, &data, env),
+        AtomKind::BigDelimiter { delim, size } => {
+            let b = delimiter_sized(ctx, delim, env, size)?;
+            let hb = ctx.boxes.hbox()?;
+            let h = ctx.boxes.height(b);
+            let total = h + ctx.boxes.depth(b);
+            let axis = env.font.style_param(&env.settings, "axisheight", env.style);
+            ctx.boxes.get_mut(b).shift = -total / 2.0 + h - axis;
+            ctx.boxes.hbox_add(hb, b)?;
+            Ok(hb)
+        }
+        AtomKind::Fenced {
+            base,
+            left,
+            right,
+            middle,
+        } => fenced_box(ctx, base, left, right, &middle, env),
+        AtomKind::NthRoot { base, root } => nth_root_box(ctx, base, root, env),
+        AtomKind::TextCircled { at } => {
+            let bigcirc = ctx.symbol("bigcirc")?;
+            let circle = create_box(ctx, bigcirc, env)?;
+            ctx.boxes.get_mut(circle).shift = -0.07 * unit_factor(Unit::Ex, env);
+            let b = create_box(ctx, at, env)?;
+            let w = ctx.boxes.width(circle);
+            let hb = ctx.boxes.hbox_aligned(b, w, Alignment::Center)?;
+            let back = ctx.boxes.strut(-ctx.boxes.width(hb), 0.0, 0.0, 0.0)?;
+            ctx.boxes.hbox_add(hb, back)?;
+            ctx.boxes.hbox_add(hb, circle)?;
+            Ok(hb)
+        }
     }
 }
 
@@ -1213,4 +1272,229 @@ fn fraction_box(ctx: &mut Ctx, data: &FractionData, env: &mut Environment) -> Re
     let f = unit_size(Unit::Em, 0.12, env);
     let w = ctx.boxes.width(vb);
     ctx.boxes.hbox_aligned(vb, w + 2.0 * f, Alignment::Center)
+}
+
+fn symbol_name(ctx: &Ctx, id: AtomId) -> Result<&'static str> {
+    match ctx.get(id).kind {
+        AtomKind::Symbol { name, .. } => Ok(name),
+        _ => Err(null_atom()),
+    }
+}
+
+/// `DelimiterFactory::create(SymbolAtom&, env, size)`: the delimiter `size`
+/// steps up its next-larger ladder, or one built to `size` times the height
+/// of an 'A' when the ladder runs out or shrinks.
+fn delimiter_sized(
+    ctx: &mut Ctx,
+    symbol: AtomId,
+    env: &mut Environment,
+    size: i32,
+) -> Result<BoxId> {
+    if size > 4 {
+        return create_box(ctx, symbol, env);
+    }
+    let name = symbol_name(ctx, symbol)?;
+    let style = env.style;
+    let mut c = symbol_char(env, name, style)?;
+    let base_total = c.metrics.height + c.metrics.depth;
+    let mut i = 1;
+    while i <= size && env.font.has_next_larger(&c) {
+        c = env.font.next_larger(&env.settings, &c, style);
+        i += 1;
+    }
+    let walked_smaller = (c.metrics.height + c.metrics.depth) < base_total;
+    if (i <= size && !env.font.has_next_larger(&c)) || walked_smaller {
+        let a = text_style_char(env, u16::from(b'A'), "mathnormal", style)?;
+        let a_box = ctx.boxes.char_box(&a)?;
+        let a_total = ctx.boxes.height(a_box) + ctx.boxes.depth(a_box);
+        return delimiter(ctx, name, env, size as f32 * a_total);
+    }
+    ctx.boxes.char_box(&c)
+}
+
+/// `DelimiterFactory::create(name, env, minHeight)`: the smallest version
+/// at least `min_height` tall, assembled from its extension parts when no
+/// single glyph is.
+pub fn delimiter(
+    ctx: &mut Ctx,
+    name: &str,
+    env: &mut Environment,
+    min_height: f32,
+) -> Result<BoxId> {
+    let style = env.style;
+    let mut c = symbol_char(env, name, style)?;
+    let mut total = c.metrics.height + c.metrics.depth;
+    while total < min_height && env.font.has_next_larger(&c) {
+        c = env.font.next_larger(&env.settings, &c, style);
+        total = c.metrics.height + c.metrics.depth;
+    }
+    if total >= min_height {
+        return ctx.boxes.char_box(&c);
+    }
+    if !env.font.is_extension_char(&c) {
+        return ctx.boxes.char_box(&c);
+    }
+    let Some(ext) = env.font.extension(&env.settings, &c, style) else {
+        return ctx.boxes.char_box(&c);
+    };
+    let vbox = ctx.boxes.vbox()?;
+    for part in [ext.top, ext.middle, ext.bottom].into_iter().flatten() {
+        let b = ctx.boxes.char_box(&part)?;
+        ctx.boxes.vbox_add(vbox, b)?;
+    }
+    if let Some(repeat) = ext.repeat {
+        let rep = ctx.boxes.char_box(&repeat)?;
+        const MAX_PIECES: i32 = 4096;
+        let mut pieces = 0;
+        if ctx.boxes.height(rep) + ctx.boxes.depth(rep) > 0.0 {
+            loop {
+                let v = ctx.boxes.get(vbox);
+                if !(v.height + v.depth <= min_height) {
+                    break;
+                }
+                let more = pieces < MAX_PIECES;
+                pieces += 1;
+                if !more {
+                    break;
+                }
+                if ext.top.is_some() && ext.bottom.is_some() {
+                    ctx.boxes.vbox_insert(vbox, 1, rep)?;
+                    if ext.middle.is_some() {
+                        let pos = ctx.boxes.group_len(vbox) - 1;
+                        ctx.boxes.vbox_insert(vbox, pos, rep)?;
+                    }
+                } else if ext.bottom.is_some() {
+                    ctx.boxes.vbox_insert(vbox, 0, rep)?;
+                } else {
+                    ctx.boxes.vbox_add(vbox, rep)?;
+                }
+            }
+        }
+    }
+    Ok(vbox)
+}
+
+/// `FencedAtom::center()`.
+fn center(ctx: &mut Ctx, b: BoxId, axis: f32) {
+    let node = ctx.boxes.get_mut(b);
+    let h = node.height;
+    let total = h + node.depth;
+    node.shift = -(total / 2.0 - h) - axis;
+}
+
+fn fenced_box(
+    ctx: &mut Ctx,
+    base: AtomId,
+    left: Option<AtomId>,
+    right: Option<AtomId>,
+    middle: &[AtomId],
+    env: &mut Environment,
+) -> Result<BoxId> {
+    if let AtomKind::Row { breakable, .. } = &mut ctx.get_mut(base).kind {
+        *breakable = false;
+    }
+    let mut content = create_box(ctx, base, env)?;
+    let shortfall = 5.0 * unit_factor(Unit::Point, env);
+    let axis = env.font.style_param(&env.settings, "axisheight", env.style);
+    let delta = cmax(
+        ctx.boxes.height(content) - axis,
+        ctx.boxes.depth(content) + axis,
+    );
+    let minh = cmax(delta / 500.0 * 901.0, 2.0 * delta - shortfall);
+    let hb = ctx.boxes.hbox()?;
+    if !middle.is_empty() {
+        for &atom in middle {
+            let sym = match ctx.get(atom).kind {
+                AtomKind::Middle { base: Some(b), .. } => match ctx.get(b).kind {
+                    AtomKind::Symbol { name, .. } => Some(name),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(name) = sym {
+                let b = delimiter(ctx, name, env, minh)?;
+                center(ctx, b, axis);
+                if let AtomKind::Middle { r#box, .. } = &mut ctx.get_mut(atom).kind {
+                    *r#box = b;
+                }
+            }
+        }
+        content = create_box(ctx, base, env)?;
+    }
+    if let Some(left) = left {
+        let name = symbol_name(ctx, left)?;
+        let b = delimiter(ctx, name, env, minh)?;
+        center(ctx, b, axis);
+        ctx.boxes.hbox_add(hb, b)?;
+    }
+    let is_space = matches!(ctx.get(base).kind, AtomKind::Space(_));
+    if !is_space {
+        let g = glue::between(AtomType::Opening, ctx.left_type(base), env);
+        let b = ctx.boxes.glue(g.width, g.stretch, g.shrink)?;
+        ctx.boxes.hbox_add(hb, b)?;
+    }
+    ctx.boxes.hbox_add(hb, content)?;
+    if !is_space {
+        let g = glue::between(ctx.right_type(base), AtomType::Closing, env);
+        let b = ctx.boxes.glue(g.width, g.stretch, g.shrink)?;
+        ctx.boxes.hbox_add(hb, b)?;
+    }
+    if let Some(right) = right {
+        let name = symbol_name(ctx, right)?;
+        let b = delimiter(ctx, name, env, minh)?;
+        center(ctx, b, axis);
+        ctx.boxes.hbox_add(hb, b)?;
+    }
+    Ok(hb)
+}
+
+fn nth_root_box(ctx: &mut Ctx, base: AtomId, root: AtomId, env: &mut Environment) -> Result<BoxId> {
+    let style = env.style;
+    let settings = env.settings;
+    let font = env.font;
+    let drt = font.style_param(&settings, "defaultrulethickness", style);
+    let mut clr = if style < TexStyle::Text {
+        let sqrt = symbol_char(env, "sqrt", style)?;
+        font.x_height(&settings, style, sqrt.font)
+    } else {
+        drt
+    };
+    clr = drt + clr.abs() / 4.0;
+
+    let mut cramped = env.cramp_style();
+    let bs = create_box(ctx, base, &mut cramped)?;
+    let b = ctx.boxes.hbox_of(bs)?;
+    let kern = space_of(ctx, Unit::Mu, 1.0, 0.0, 0.0, &mut cramped)?;
+    ctx.boxes.hbox_add(b, kern)?;
+
+    let total_h = ctx.boxes.height(b) + ctx.boxes.depth(b);
+    let root_sign = delimiter(ctx, "sqrt", env, total_h + clr + drt)?;
+    let delta = ctx.boxes.depth(root_sign) - (total_h + clr);
+    clr += delta / 2.0;
+
+    let b_height = ctx.boxes.height(b);
+    ctx.boxes.get_mut(root_sign).shift = -(b_height + clr);
+    let sign_height = ctx.boxes.height(root_sign);
+    let ob = ctx.boxes.over_bar(b, clr, sign_height)?;
+    ctx.boxes.get_mut(ob).shift = -(b_height + clr + drt);
+    let square_root = ctx.boxes.hbox_of(root_sign)?;
+    ctx.boxes.hbox_add(square_root, ob)?;
+
+    let r = create_box(ctx, root, &mut env.root_style())?;
+    let sq = ctx.boxes.get(square_root);
+    let bottom_shift = 0.55 * (sq.height + sq.depth);
+    let sq_depth = sq.depth;
+    let r_depth = ctx.boxes.depth(r);
+    ctx.boxes.get_mut(r).shift = sq_depth - r_depth - bottom_shift;
+    let negkern = space_of(ctx, Unit::Mu, -10.0, 0.0, 0.0, env)?;
+    let res = ctx.boxes.hbox()?;
+    let pos = ctx.boxes.width(r) + ctx.boxes.width(negkern);
+    if pos < 0.0 {
+        let s = ctx.boxes.strut(-pos, 0.0, 0.0, 0.0)?;
+        ctx.boxes.hbox_add(res, s)?;
+    }
+    ctx.boxes.hbox_add(res, r)?;
+    ctx.boxes.hbox_add(res, negkern)?;
+    ctx.boxes.hbox_add(res, square_root)?;
+    Ok(res)
 }

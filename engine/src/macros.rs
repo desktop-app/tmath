@@ -10,7 +10,7 @@ use crate::enums::{AtomType, SpaceType, Unit};
 use crate::error::{Error, Result};
 use crate::font::TexStyle;
 use crate::layout::new_fraction;
-use crate::parser::{Args, Parser, new_cumulative_scripts, parse_arg};
+use crate::parser::{Args, Parser, new_cumulative_scripts, parse_arg, parse_sub};
 use crate::tables::{self, MacroKind};
 use crate::wstr::{self, w};
 
@@ -290,17 +290,22 @@ fn new_environment(ctx: &mut Ctx, args: &mut Args, renew: bool) -> Result<Option
     Ok(None)
 }
 
-fn style_macro(tp: &mut Parser, ctx: &mut Ctx, style: TexStyle) -> Result<Option<AtomId>> {
-    let text = tp.get_over_argument()?;
-    let g = parse_arg(ctx, tp, text, false)?;
-    let at = match g {
+/// `StyleAtom(style, a)`: an empty atom when there is none.
+fn new_style(ctx: &mut Ctx, style: TexStyle, a: Option<AtomId>) -> AtomId {
+    let at = match a {
         Some(a) => a,
         None => ctx.atom(AtomKind::Empty),
     };
     let atom_type = ctx.get(at).atom_type;
     let id = ctx.atom(AtomKind::Style { style, at });
     ctx.get_mut(id).atom_type = atom_type;
-    Ok(Some(id))
+    id
+}
+
+fn style_macro(tp: &mut Parser, ctx: &mut Ctx, style: TexStyle) -> Result<Option<AtomId>> {
+    let text = tp.get_over_argument()?;
+    let g = parse_arg(ctx, tp, text, false)?;
+    Ok(Some(new_style(ctx, style, g)))
 }
 
 /// `TypedAtom(lt, rt, atom)`.
@@ -441,6 +446,183 @@ fn call(
         "mathcumsup" => cumulative(tp, ctx, args, true),
         "mathcumsub" => cumulative(tp, ctx, args, false),
         "insertBreakMark" => Ok(Some(ctx.atom(AtomKind::BreakMark))),
+        "makeatletter" => {
+            tp.make_at_letter();
+            Ok(None)
+        }
+        "makeatother" => {
+            tp.make_at_other();
+            Ok(None)
+        }
+        "text" => {
+            let root = parse_sub(ctx, tp, args[1].clone(), "mathnormal", false, false)?.root;
+            Ok(Some(ctx.atom(AtomKind::Roman { base: root })))
+        }
+        "mbox" => {
+            let root = parse_sub(ctx, tp, args[1].clone(), "mathnormal", false, false)?.root;
+            let group = ctx.atom(AtomKind::Roman { base: root });
+            Ok(Some(new_style(ctx, TexStyle::Text, Some(group))))
+        }
+        "mathit" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::It { base })))
+        }
+        "mathsf" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::Ss { base })))
+        }
+        "mathtt" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            Ok(Some(ctx.atom(AtomKind::Tt { base })))
+        }
+        "it" | "sf" | "tt" | "rm" | "bf" => {
+            let text = tp.get_over_argument()?;
+            let math_mode = tp.is_math_mode();
+            let base = parse_sub(ctx, tp, text, "", false, math_mode)?.root;
+            Ok(Some(match name {
+                "it" => ctx.atom(AtomKind::It { base }),
+                "sf" => ctx.atom(AtomKind::Ss { base }),
+                "tt" => ctx.atom(AtomKind::Tt { base }),
+                "rm" => ctx.atom(AtomKind::Roman { base }),
+                _ => {
+                    let roman = ctx.atom(AtomKind::Roman { base });
+                    ctx.atom(AtomKind::Bold { base: Some(roman) })
+                }
+            }))
+        }
+        "mathscr" | "mathbb" | "mathcal" | "cal" | "mathfrak" | "mathds" | "frak" | "Bbb"
+        | "oldstylenums" | "bold" => {
+            let style: &'static str = match name {
+                "frak" => "mathfrak",
+                "Bbb" => "mathbb",
+                "cal" => "mathcal",
+                other => other,
+            };
+            let at = parse_arg(ctx, tp, args[1].clone(), false)?;
+            if style == "bold" {
+                return Ok(Some(ctx.atom(AtomKind::Bold { base: at })));
+            }
+            Ok(Some(ctx.atom(AtomKind::TextStyle { style, at })))
+        }
+        "phantom" | "hphantom" | "vphantom" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let (w, h, d) = match name {
+                "phantom" => (true, true, true),
+                "hphantom" => (true, false, false),
+                _ => (false, true, true),
+            };
+            let elements = ctx.new_row_of(base);
+            Ok(Some(ctx.atom(AtomKind::Phantom { elements, w, h, d })))
+        }
+        "left" => left(tp, ctx, args),
+        "middle" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let b = ctx.boxes.strut(0.0, 0.0, 0.0, 0.0)?;
+            Ok(Some(ctx.atom(AtomKind::Middle { base, r#box: b })))
+        }
+        "sqrt" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let root = if args[2].is_empty() {
+                None
+            } else {
+                parse_arg(ctx, tp, args[2].clone(), false)?
+            };
+            let base = base.unwrap_or_else(|| ctx.atom(AtomKind::Empty));
+            let root = root.unwrap_or_else(|| ctx.atom(AtomKind::Empty));
+            Ok(Some(ctx.atom(AtomKind::NthRoot { base, root })))
+        }
+        "big" | "Big" | "bigg" | "Bigg" | "bigl" | "Bigl" | "biggl" | "Biggl" | "bigr" | "Bigr"
+        | "biggr" | "Biggr" => {
+            let size = match name {
+                "big" | "bigl" | "bigr" => 1,
+                "Big" | "Bigl" | "Bigr" => 2,
+                "bigg" | "biggl" | "biggr" => 3,
+                _ => 4,
+            };
+            let atom_type = match name.as_bytes().last() {
+                Some(b'l') => AtomType::Opening,
+                Some(b'r') => AtomType::Closing,
+                _ => AtomType::None,
+            };
+            let a = parse_arg(ctx, tp, args[1].clone(), false)?;
+            let Some(delim) = a.filter(|&a| matches!(ctx.get(a).kind, AtomKind::Symbol { .. }))
+            else {
+                return Ok(a);
+            };
+            let t = ctx.atom(AtomKind::BigDelimiter { delim, size });
+            if atom_type != AtomType::None {
+                ctx.get_mut(t).atom_type = atom_type;
+            }
+            Ok(Some(t))
+        }
+        "textcircled" => {
+            let base = parse_arg(ctx, tp, args[1].clone(), true)?;
+            let at = ctx.atom(AtomKind::Roman { base });
+            Ok(Some(ctx.atom(AtomKind::TextCircled { at })))
+        }
+        "joinrel" => {
+            let space = ctx.atom(AtomKind::Space(SpaceData::sized(Unit::Mu, -2.6, 0.0, 0.0)));
+            Ok(Some(new_typed(
+                ctx,
+                AtomType::Relation,
+                AtomType::Relation,
+                Some(space),
+            )?))
+        }
         _ => Err(unsupported(ctx, &format!("\\{name}"))),
     }
+}
+
+/// The delimiter inside a `BigDelimiterAtom`, or the atom itself.
+fn unwrap_big(ctx: &Ctx, atom: Option<AtomId>) -> Option<AtomId> {
+    match atom.map(|a| &ctx.get(a).kind) {
+        Some(AtomKind::BigDelimiter { delim, .. }) => Some(*delim),
+        _ => atom,
+    }
+}
+
+fn is_symbol(ctx: &Ctx, atom: Option<AtomId>) -> bool {
+    atom.is_some_and(|a| matches!(ctx.get(a).kind, AtomKind::Symbol { .. }))
+}
+
+/// `macro_left`: `\left` ... `\right` as a fenced atom when both delimiters
+/// are symbols, else as a row of the three parts.
+fn left(tp: &mut Parser, ctx: &mut Ctx, args: &mut Args) -> Result<Option<AtomId>> {
+    let grep = tp.get_group_strings(&w(r"\left"), &w(r"\right"))?;
+    let l = parse_arg(ctx, tp, args[1].clone(), false)?;
+    let l = unwrap_big(ctx, l);
+    let r = tp.get_argument(ctx)?;
+    let r = unwrap_big(ctx, r);
+    if is_symbol(ctx, l) && is_symbol(ctx, r) {
+        let tf = parse_sub(ctx, tp, grep, "", false, true)?;
+        let base = match tf.root {
+            Some(b) => b,
+            None => ctx.new_row(),
+        };
+        let keep = |ctx: &Ctx, s: Option<AtomId>| {
+            s.filter(|&s| {
+                !matches!(
+                    ctx.get(s).kind,
+                    AtomKind::Symbol {
+                        name: "normaldot",
+                        ..
+                    }
+                )
+            })
+        };
+        let left = keep(ctx, l);
+        let right = keep(ctx, r);
+        return Ok(Some(ctx.atom(AtomKind::Fenced {
+            base,
+            left,
+            right,
+            middle: tf.middle,
+        })));
+    }
+    let row = ctx.new_row();
+    ctx.row_add(row, l);
+    let inner = parse_arg(ctx, tp, grep, false)?;
+    ctx.row_add(row, inner);
+    ctx.row_add(row, r);
+    Ok(Some(row))
 }

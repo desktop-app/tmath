@@ -50,6 +50,34 @@ def gen_depth():
     # #70: a self-referential command read as an argument.
     add("70/self-argument", "\\newcommand{\\a}{\\a}\\frac{x^\\a}{y}")
     add("70/self-sqrt", "\\newcommand{\\a}{\\a}\\sqrt\\a")
+    # Every way of nesting, at the depth limit: each takes its own stack per
+    # level, in parsing and in layout, and all of them have to fit.
+    wrappers = (
+        ("left", "\\left(", "\\right)"), ("text", "\\text{", "}"), ("mbox", "\\mbox{", "}"),
+        ("color", "\\textcolor{red}{", "}"), ("colorbox", "\\colorbox{red}{", "}"),
+        ("fbox", "\\fbox{", "}"), ("boxed", "\\boxed{", "}"), ("shadowbox", "\\shadowbox{", "}"),
+        ("ovalbox", "\\ovalbox{", "}"), ("doublebox", "\\doublebox{", "}"),
+        ("overbrace", "\\overbrace{", "}"), ("underbrace", "\\underbrace{", "}^{a}"),
+        ("xrightarrow", "\\xrightarrow{", "}"), ("overrightarrow", "\\overrightarrow{", "}"),
+        ("overline", "\\overline{", "}"), ("underline", "\\underline{", "}"), ("hat", "\\hat{", "}"),
+        ("widehat", "\\widehat{", "}"), ("cancel", "\\cancel{", "}"), ("phantom", "\\phantom{", "}x"),
+        ("smash", "\\smash{", "}"), ("raisebox", "\\raisebox{1pt}{", "}"),
+        ("rotatebox", "\\rotatebox{10}{", "}"), ("scalebox", "\\scalebox{1.01}{", "}"),
+        ("reflectbox", "\\reflectbox{", "}"), ("stackrel", "\\stackrel{a}{", "}"),
+        ("underset", "\\underset{a}{", "}"), ("overset", "\\overset{a}{", "}"),
+        ("binom", "\\binom{a}{", "}"), ("cfrac", "\\cfrac{a}{", "}"), ("genfrac", "\\genfrac(){1pt}{0}{a}{", "}"),
+        ("sfrac", "\\sfrac{a}{", "}"), ("sqrt-index", "\\sqrt[3]{", "}"), ("sup", "x^{", "}"),
+        ("sub-sup", "x_{a}^{", "}"), ("sum", "\\sum_{i}^{", "}"), ("mathop", "\\mathop{", "}\\limits^a"),
+        ("mathbf", "\\mathbf{", "}"), ("mathbb", "\\mathbb{", "}"), ("textit", "\\textit{", "}"),
+        ("matrix", "\\begin{matrix}", "\\end{matrix}"), ("pmatrix", "\\begin{pmatrix}a&", "\\end{pmatrix}"),
+        ("array", "\\begin{array}{|c|}\\hline ", "\\\\\\hline\\end{array}"),
+        ("aligned", "\\begin{aligned}a&=", "\\end{aligned}"), ("cases", "\\begin{cases}a&", "\\end{cases}"),
+        ("multicolumn", "\\begin{array}{cc}\\multicolumn{2}{c}{", "}\\end{array}"),
+        ("displaystyle", "{\\displaystyle ", "}"), ("over", "{a\\over ", "}"), ("choose", "{a\\choose ", "}"),
+        ("vrow", "{a\\\\", "}"), ("tiny", "{\\tiny ", "}"), ("st", "\\st{", "}"), ("sideset", "\\sideset{_a}{^b}{", "}"),
+    )
+    for name, open_, close in wrappers:
+        sweep(f"depth/{name}", (23, 24, 46, 47, 48), lambda n, o=open_, c=close: nested(o, c, n))
 
 
 def gen_chains():

@@ -315,10 +315,35 @@ fn time(record: &Record, repeat: u32) -> (bool, std::time::Duration) {
 }
 
 fn main() {
+    // `--stack <KiB>` runs everything on a thread with that much stack, to
+    // check what the deepest formulas need.
+    let mut args = std::env::args().skip(1).peekable();
+    let mut stack = None;
+    let mut rest = Vec::new();
+    while let Some(arg) = args.next() {
+        if arg == "--stack" {
+            stack = args.next().and_then(|n| n.parse::<usize>().ok());
+        } else {
+            rest.push(arg);
+        }
+    }
+    match stack {
+        Some(kib) => {
+            let worker = std::thread::Builder::new()
+                .stack_size(kib * 1024)
+                .spawn(move || run_all(rest))
+                .expect("thread");
+            let _ = worker.join();
+        }
+        None => run_all(rest),
+    }
+}
+
+fn run_all(arguments: Vec<String>) {
     let mut digest = false;
     let mut with_boxes = true;
     let mut bench = 0;
-    let mut args = std::env::args().skip(1);
+    let mut args = arguments.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--digest" => digest = true,
@@ -456,6 +481,28 @@ mod tests {
             include_str!("../../corpus/adversarial.jsonl"),
             include_str!("../../corpus/golden/adversarial.tsv"),
         );
+    }
+
+    /// tdesktop lays formulas out on its GUI thread, which on Windows has a
+    /// 1 MiB stack. The deepest formulas the limits allow must fit in half.
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn deepest_formulas_fit_half_the_stack() {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                check(
+                    include_str!("../../corpus/regressions.jsonl"),
+                    include_str!("../../corpus/golden/regressions.tsv"),
+                );
+                check(
+                    include_str!("../../corpus/adversarial.jsonl"),
+                    include_str!("../../corpus/golden/adversarial.tsv"),
+                );
+            })
+            .expect("thread")
+            .join()
+            .expect("no panic");
     }
 
     #[test]

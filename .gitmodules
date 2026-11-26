@@ -1,0 +1,3 @@
+[submodule "oracle/MicroTeX"]
+	path = oracle/MicroTeX
+	url = https://github.com/desktop-app/MicroTeX.git

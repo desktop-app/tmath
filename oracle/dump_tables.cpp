@@ -26,6 +26,7 @@ namespace tex {
 
 struct OracleAccess {
 	static void Dump(std::ostream &out);
+	static void FontQueries(std::ostream &out);
 };
 
 namespace {
@@ -206,12 +207,172 @@ void OracleAccess::Dump(std::ostream &out) {
 	}
 }
 
+namespace {
+
+struct FontFlags {
+	const char *name;
+	bool bold, roman, ss, tt, it;
+};
+
+constexpr FontFlags kFontFlags[] = {
+	{ "none", false, false, false, false, false },
+	{ "bold", true, false, false, false, false },
+	{ "roman", false, true, false, false, false },
+	{ "ss", false, false, true, false, false },
+	{ "tt", false, false, false, true, false },
+	{ "it", false, false, false, false, true },
+	{ "bold-it", true, false, false, false, true },
+	{ "bold-ss", true, false, true, false, false },
+	{ "roman-tt-it", false, true, false, true, true },
+};
+
+constexpr TexStyle kStyles[] = {
+	TexStyle::display,
+	TexStyle::text,
+	TexStyle::script,
+	TexStyle::scriptScript,
+};
+
+std::string CharText(const Char &c) {
+	return std::to_string(unsigned(c.getChar()) & 0xFFFFu)
+		+ " " + std::to_string(c.getFontCode())
+		+ " " + FormatFloat(c.getWidth())
+		+ " " + FormatFloat(c.getHeight())
+		+ " " + FormatFloat(c.getDepth())
+		+ " " + FormatFloat(c.getItalic())
+		+ " " + FormatFloat(c.getSize());
+}
+
+template <typename Callback>
+void Guarded(std::ostream &out, const std::string &prefix, Callback &&callback) {
+	try {
+		out << prefix << " -> " << callback() << "\n";
+	} catch (const std::exception &e) {
+		out << prefix << " -> throw\n";
+	}
+}
+
+std::vector<wchar_t> SampleChars() {
+	auto result = std::vector<wchar_t>();
+	for (auto c = L'0'; c <= L'9'; ++c) result.push_back(c);
+	for (auto c = L'a'; c <= L'z'; ++c) result.push_back(c);
+	for (auto c = L'A'; c <= L'Z'; ++c) result.push_back(c);
+	for (const auto c : { L' ', L'+', L'(', wchar_t(0xC0), wchar_t(0x3B1), wchar_t(0x416), wchar_t(0xFFFF) }) {
+		result.push_back(c);
+	}
+	return result;
+}
+
+} // namespace
+
+void OracleAccess::FontQueries(std::ostream &out) {
+	const auto chars = SampleChars();
+	for (const auto &flags : kFontFlags) {
+		for (const auto style : kStyles) {
+			auto font = DefaultTeXFont(
+				1024.f,
+				1.f,
+				flags.bold,
+				flags.roman,
+				flags.ss,
+				flags.tt,
+				flags.it);
+			const auto tag = std::string(flags.name) + " " + std::to_string(int(style));
+			for (const auto &[name, mapping] : DefaultTeXFont::_symbolMappings) {
+				Guarded(out, "sym " + tag + " " + name, [&] {
+					return CharText(font.getChar(name, style));
+				});
+			}
+			for (const auto &[name, mappings] : DefaultTeXFont::_textStyleMappings) {
+				for (const auto c : chars) {
+					Guarded(out, "text " + tag + " " + name + " " + std::to_string(unsigned(c) & 0xFFFFu), [&] {
+						return CharText(font.getChar(c, name, style));
+					});
+				}
+			}
+			for (const auto c : chars) {
+				Guarded(out, "default " + tag + " " + std::to_string(unsigned(c) & 0xFFFFu), [&] {
+					return CharText(font.getDefaultChar(c, style));
+				});
+			}
+		}
+	}
+
+	auto font = DefaultTeXFont(1024.f);
+	for (const auto style : kStyles) {
+		const auto s = std::to_string(int(style));
+		for (const auto &[name, mapping] : DefaultTeXFont::_symbolMappings) {
+			auto c = font.getChar(name, style);
+			auto chain = std::string();
+			for (auto step = 0; step != 12 && font.hasNextLarger(c); ++step) {
+				c = font.getNextLarger(c, style);
+				chain += " | " + CharText(c);
+			}
+			out << "larger " << s << " " << name << " ->" << chain << "\n";
+			const auto ext = std::unique_ptr<Extension>(font.getExtension(c, style));
+			out << "ext " << s << " " << name << " -> ";
+			if (!ext) {
+				out << "none\n";
+			} else {
+				out << (ext->hasTop() ? CharText(ext->getTop()) : "-") << " | "
+					<< (ext->hasMiddle() ? CharText(ext->getMiddle()) : "-") << " | "
+					<< (ext->hasRepeat() ? CharText(ext->getRepeat()) : "-") << " | "
+					<< (ext->hasBottom() ? CharText(ext->getBottom()) : "-") << "\n";
+			}
+			out << "isext " << s << " " << name << " -> " << (font.isExtensionChar(c) ? 1 : 0) << "\n";
+		}
+		for (size_t id = 0; id != FontInfo::_infos.size(); ++id) {
+			const auto info = FontInfo::_infos[id];
+			for (size_t row = 0; row != info->_kern.rows(); ++row) {
+				const auto item = info->_kern[row];
+				const auto left = CharFont(wchar_t(item[0]), int(id));
+				const auto right = CharFont(wchar_t(item[1]), int(id));
+				out << "kern " << s << " " << id << " " << (long long)item[0] << " " << (long long)item[1]
+					<< " -> " << FormatFloat(font.getKern(left, right, style)) << "\n";
+			}
+			for (size_t row = 0; row != info->_metrics.rows(); ++row) {
+				const auto code = wchar_t(info->_metrics[row][0]);
+				const auto cf = CharFont(code, int(id));
+				out << "skew " << s << " " << id << " " << (unsigned(code) & 0xFFFFu)
+					<< " -> " << FormatFloat(font.getSkew(cf, style)) << "\n";
+			}
+			out << "fontparams " << s << " " << id
+				<< " -> " << FormatFloat(font.getQuad(style, int(id)))
+				<< " " << FormatFloat(font.getXHeight(style, int(id)))
+				<< " " << (font.hasSpace(int(id)) ? 1 : 0) << "\n";
+		}
+		for (const auto name : {
+				"axisheight", "bigopspacing1", "bigopspacing2", "bigopspacing3",
+				"bigopspacing4", "bigopspacing5", "num1", "num2", "num3", "sub1",
+				"sub2", "subdrop", "sup1", "sup2", "sup3", "supdrop", "denom1",
+				"denom2", "defaultrulethickness", "missing" }) {
+			out << "param " << s << " " << name << " -> " << FormatFloat(font.styleParam(name, style)) << "\n";
+		}
+		out << "space " << s << " -> " << FormatFloat(font.getSpace(style))
+			<< " " << FormatFloat(font.getEM(style))
+			<< " " << font.getMuFontId() << "\n";
+	}
+	for (size_t id = 0; id != FontInfo::_infos.size(); ++id) {
+		const auto info = FontInfo::_infos[id];
+		for (size_t row = 0; row != info->_lig.rows(); ++row) {
+			const auto item = info->_lig[row];
+			const auto lig = font.getLigature(CharFont(item[0], int(id)), CharFont(item[1], int(id)));
+			out << "lig " << id << " " << (unsigned(item[0]) & 0xFFFFu) << " " << (unsigned(item[1]) & 0xFFFFu)
+				<< " -> " << (lig ? CharFontText(lig.get()) : "null") << "\n";
+		}
+	}
+}
+
 } // namespace tex
 
 namespace oracle {
 
 void DumpTables(std::ostream &out) {
 	tex::OracleAccess::Dump(out);
+}
+
+void FontQueries(std::ostream &out) {
+	tex::OracleAccess::FontQueries(out);
 }
 
 } // namespace oracle

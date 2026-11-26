@@ -3,5 +3,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod font;
 pub mod tables;
 pub mod text;
+
+#[cfg(test)]
+mod font_tests;

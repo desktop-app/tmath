@@ -17,6 +17,8 @@
 // Modes:
 //   microtex_oracle [--digest] [--no-boxes] < corpus.jsonl
 //   microtex_oracle --bench <repeat> < corpus.jsonl
+//   microtex_oracle --dump-tables
+#include "dump_tables.h"
 #include "recording.h"
 
 #include "latex.h"
@@ -443,12 +445,15 @@ int main(int argc, char *argv[]) {
 	auto digest = false;
 	auto boxes = true;
 	auto bench = 0;
+	auto tables = false;
 	for (auto i = 1; i < argc; ++i) {
 		const auto arg = std::string(argv[i]);
 		if (arg == "--digest") {
 			digest = true;
 		} else if (arg == "--no-boxes") {
 			boxes = false;
+		} else if (arg == "--dump-tables") {
+			tables = true;
 		} else if (arg == "--bench" && i + 1 < argc) {
 			bench = std::max(1, std::atoi(argv[++i]));
 		} else {
@@ -457,6 +462,10 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	tex::LaTeX::initBundled();
+	if (tables) {
+		oracle::DumpTables(std::cout);
+		return 0;
+	}
 
 	auto records = std::vector<Record>();
 	auto line = std::string();

@@ -21,6 +21,8 @@ file(GLOB microtex_sym_defs ${microtex_src}/res/sym/*.def.cpp)
 
 add_executable(microtex_oracle
     oracle_main.cpp
+    dump_tables.cpp
+    dump_tables.h
     recording.cpp
     recording.h
     ${microtex_src}/latex.cpp

@@ -158,7 +158,7 @@ pub fn create_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<Bo
         AtomKind::Scripts { .. } => scripts_layout_guard(ctx, |ctx| scripts_box(ctx, id, env)),
         AtomKind::CumulativeScripts { base, sub, sup } => {
             let temp = new_scripts(ctx, base, Some(sub), Some(sup), Alignment::Left)?;
-            scripts_box(ctx, temp, env)
+            scripts_layout_guard(ctx, |ctx| scripts_box(ctx, temp, env))
         }
         AtomKind::BigOperator { .. } => {
             scripts_layout_guard(ctx, |ctx| big_operator_box(ctx, id, env))
@@ -1227,7 +1227,7 @@ fn big_operator_box(ctx: &mut Ctx, id: AtomId, env: &mut Environment) -> Result<
             return Ok(b);
         }
         let temp = new_scripts(ctx, base, under, over, Alignment::Left)?;
-        return scripts_box(ctx, temp, env);
+        return scripts_layout_guard(ctx, |ctx| scripts_box(ctx, temp, env));
     }
 
     let y;

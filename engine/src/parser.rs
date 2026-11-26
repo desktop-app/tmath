@@ -225,6 +225,12 @@ fn block_contains(block: (u16, u16), c: u16) -> bool {
     c >= block.0 && c <= block.1
 }
 
+/// `towstring(wchar_t)`: a wide stream insertion. With MSVC, `WEOF` is
+/// 0xFFFF, so inserting U+FFFF fails and the text stays empty.
+fn towstring_char(c: u16) -> WStr {
+    if c == 0xFFFF { Vec::new() } else { vec![c] }
+}
+
 fn find_mapping(table: &'static [(i32, &'static str)], c: u16) -> Option<&'static str> {
     let key = i32::from(c);
     table
@@ -1385,7 +1391,7 @@ impl Parser {
                 let infos = Some(("SansSerif", "Serif"));
                 if one_char {
                     return Ok(Some(ctx.atom(AtomKind::TextRendering {
-                        text: vec![c],
+                        text: towstring_char(c),
                         style: 0,
                         infos,
                     })));

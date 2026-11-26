@@ -345,12 +345,9 @@ fn digest_of(out: &Output) -> String {
 mod tests {
     use super::*;
 
-    /// Every formula the engine supports must lay out and draw exactly as the
-    /// oracle did when the golden was recorded.
-    #[test]
-    fn features_match_the_golden() {
-        let corpus = include_str!("../../corpus/features.jsonl");
-        let golden = include_str!("../../corpus/golden/features.tsv");
+    /// Every formula must parse, lay out and draw exactly as the oracle did
+    /// when the golden was recorded, or fail where the oracle failed.
+    fn check(corpus: &str, golden: &str) {
         let expected: std::collections::HashMap<&str, Vec<&str>> = golden
             .lines()
             .map(|l| {
@@ -359,17 +356,12 @@ mod tests {
             })
             .collect();
         let mut matched = 0;
-        let mut unsupported = 0;
         let mut differ = Vec::new();
         for line in corpus.lines().filter(|l| !l.trim().is_empty()) {
             let record = parse_record(line).expect("record");
             let out = run(&record, false);
             let g = &expected[record.id.as_str()];
             let kind = out.status.split(' ').next().unwrap_or("");
-            if kind == "unsupported" {
-                unsupported += 1;
-                continue;
-            }
             let metrics = out.metrics.strip_prefix("metrics ").unwrap_or("");
             let same = if g[1] == "ok" {
                 kind == "ok" && g[3] == metrics && g[4] == digest_of(&out)
@@ -382,14 +374,43 @@ mod tests {
                 differ.push(record.id.clone());
             }
         }
-        eprintln!(
-            "{matched} match, {unsupported} unsupported, {} differ",
-            differ.len()
-        );
+        eprintln!("{matched} match, {} differ", differ.len());
         assert!(
             differ.is_empty(),
             "differ: {:?}",
             &differ[..differ.len().min(20)]
+        );
+    }
+
+    #[test]
+    fn features_match_the_golden() {
+        check(
+            include_str!("../../corpus/features.jsonl"),
+            include_str!("../../corpus/golden/features.tsv"),
+        );
+    }
+
+    #[test]
+    fn samples_match_the_golden() {
+        check(
+            include_str!("../../corpus/samples.jsonl"),
+            include_str!("../../corpus/golden/samples.tsv"),
+        );
+    }
+
+    #[test]
+    fn adversarial_match_the_golden() {
+        check(
+            include_str!("../../corpus/adversarial.jsonl"),
+            include_str!("../../corpus/golden/adversarial.tsv"),
+        );
+    }
+
+    #[test]
+    fn regressions_match_the_golden() {
+        check(
+            include_str!("../../corpus/regressions.jsonl"),
+            include_str!("../../corpus/golden/regressions.tsv"),
         );
     }
 }

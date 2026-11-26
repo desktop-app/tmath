@@ -68,6 +68,27 @@ add_executable(microtex_oracle
 
 target_include_directories(microtex_oracle PRIVATE ${microtex_src})
 
+# With the C interface of tmath built (cargo build --release -p tmath-c),
+# --replay lays formulas out with the Rust engine through tmath.h and paints
+# them through replay/tmath_replay.cpp, the path tdesktop takes, so its output
+# can be compared with the C++ goldens.
+set(TMATH_C_LIB "" CACHE FILEPATH "tmath_c static library, for --replay")
+if (TMATH_C_LIB)
+    get_filename_component(tmath_root ${CMAKE_CURRENT_SOURCE_DIR}/.. ABSOLUTE)
+    target_sources(microtex_oracle PRIVATE
+        ${tmath_root}/replay/tmath_replay.cpp
+        ${tmath_root}/replay/tmath_replay.h)
+    target_include_directories(microtex_oracle PRIVATE
+        ${tmath_root}/include
+        ${tmath_root}/replay)
+    target_compile_definitions(microtex_oracle PRIVATE TMATH_REPLAY)
+    target_link_libraries(microtex_oracle PRIVATE ${TMATH_C_LIB})
+    if (WIN32)
+        target_link_libraries(microtex_oracle PRIVATE
+            kernel32 ntdll userenv ws2_32 dbghelp)
+    endif()
+endif()
+
 if (MSVC)
     target_compile_options(microtex_oracle PRIVATE /utf-8 /W0 /bigobj /fp:precise)
     target_compile_definitions(microtex_oracle PRIVATE _USE_MATH_DEFINES NOMINMAX)

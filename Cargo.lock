@@ -7,6 +7,13 @@ name = "tmath"
 version = "0.1.0"
 
 [[package]]
+name = "tmath-c"
+version = "0.1.0"
+dependencies = [
+ "tmath",
+]
+
+[[package]]
 name = "tmath-compare"
 version = "0.1.0"
 dependencies = [

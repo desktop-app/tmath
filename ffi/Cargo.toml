@@ -1,0 +1,19 @@
+[package]
+name = "tmath-c"
+description = "The C interface of tmath, declared in include/tmath.h"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "tmath_c"
+path = "src/lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+tmath = { path = "../engine" }
+
+[lints.rust]
+unsafe_code = "deny"

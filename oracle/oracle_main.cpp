@@ -21,8 +21,15 @@
 //   microtex_oracle --font-queries
 //   microtex_oracle --env-queries
 //   microtex_oracle --predefined-cache
+//   microtex_oracle --replay [--digest] [--no-boxes] < corpus.jsonl
+//     (built with TMATH_C_LIB: the Rust engine through tmath.h, painted by
+//     tmath::Replay; no box tree)
 #include "dump_tables.h"
 #include "recording.h"
+
+#ifdef TMATH_REPLAY
+#include "tmath_replay.h"
+#endif // TMATH_REPLAY
 
 #include "latex.h"
 #include "box/box.h"
@@ -356,6 +363,47 @@ Result Run(const Record &record, bool boxes) {
 	return result;
 }
 
+#ifdef TMATH_REPLAY
+Result RunReplay(const Record &record) {
+	auto result = Result();
+	oracle::SetRecorder(&result.recorder);
+	const auto wide = ToUtf16Units(record.tex);
+	const auto units = std::vector<uint16_t>(wide.begin(), wide.end());
+	const auto formula = tmath_layout(
+		units.data(),
+		units.size(),
+		record.width,
+		record.size,
+		record.line,
+		record.fg,
+		tmath::MeasureText,
+		nullptr);
+	if (tmath_status(formula) != TMATH_OK) {
+		result.status = std::string("error ")
+			+ reinterpret_cast<const char*>(tmath_error(formula, nullptr));
+	} else {
+		int32_t insets[4] = { 0 };
+		tmath_insets(formula, insets);
+		result.metrics = "metrics "
+			+ std::to_string(tmath_width(formula))
+			+ " " + std::to_string(tmath_height(formula))
+			+ " " + std::to_string(tmath_depth(formula))
+			+ " " + oracle::FormatFloat(tmath_baseline(formula))
+			+ " " + std::to_string(insets[0])
+			+ " " + std::to_string(insets[1])
+			+ " " + std::to_string(insets[2])
+			+ " " + std::to_string(insets[3]);
+		auto graphics = oracle::MakeRecordingGraphics();
+		result.status = tmath::Replay(formula, *graphics)
+			? "ok"
+			: "draw-error invalid-display-list";
+	}
+	tmath_free(formula);
+	oracle::SetRecorder(nullptr);
+	return result;
+}
+#endif // TMATH_REPLAY
+
 uint64_t Fnv1a(const std::vector<std::string> &lines, uint64_t hash) {
 	for (const auto &line : lines) {
 		for (const auto c : line) {
@@ -452,6 +500,7 @@ int main(int argc, char *argv[]) {
 	auto fontQueries = false;
 	auto envQueries = false;
 	auto predefinedCache = false;
+	auto replay = false;
 	for (auto i = 1; i < argc; ++i) {
 		const auto arg = std::string(argv[i]);
 		if (arg == "--digest") {
@@ -462,6 +511,8 @@ int main(int argc, char *argv[]) {
 			fontQueries = true;
 		} else if (arg == "--env-queries") {
 			envQueries = true;
+		} else if (arg == "--replay") {
+			replay = true;
 		} else if (arg == "--predefined-cache") {
 			predefinedCache = true;
 		} else if (arg == "--dump-tables") {
@@ -512,7 +563,16 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 		std::cout << "@ " << record->id << "\n" << std::flush;
+#ifdef TMATH_REPLAY
+		const auto result = replay ? RunReplay(*record) : Run(*record, boxes);
+#else // TMATH_REPLAY
+		if (replay) {
+			std::cerr << "Built without TMATH_C_LIB, --replay is unavailable.
+";
+			return 2;
+		}
 		const auto result = Run(*record, boxes);
+#endif // TMATH_REPLAY
 		if (digest) {
 			PrintDigest(*record, result);
 		} else {

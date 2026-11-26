@@ -26,13 +26,13 @@ DEFAULT_ORACLE = Path(__file__).resolve().parent.parent / "out" / "oracle" / "Re
     "microtex_oracle.exe" if sys.platform == "win32" else "microtex_oracle")
 
 
-def run_batch(oracle, lines, timeout, full):
+def run_batch(oracle, lines, timeout, full, extra=()):
     """Runs the oracle on lines until it finishes, crashes or hangs.
 
     Returns (results, consumed): a list of (id, block) for finished formulas,
     a (id, kind) failure if one happened, and how many input lines were used.
     """
-    args = [str(oracle)] + ([] if full else ["--digest", "--no-boxes"])
+    args = [str(oracle)] + list(extra) + ([] if full else ["--digest", "--no-boxes"])
     process = subprocess.Popen(
         args,
         stdin=subprocess.PIPE,
@@ -96,6 +96,8 @@ def main():
     parser.add_argument("--oracle", default=str(DEFAULT_ORACLE))
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--full", help="also write full dumps to this file")
+    parser.add_argument("--oracle-arg", action="append", default=[],
+                        help="pass this argument to the oracle too, e.g. --replay")
     options = parser.parse_args()
 
     lines = [l for l in Path(options.corpus).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -105,7 +107,8 @@ def main():
     position = 0
     while position < len(lines):
         results, failure, consumed = run_batch(
-            options.oracle, lines[position:], options.timeout, full=False)
+            options.oracle, lines[position:], options.timeout, full=False,
+            extra=options.oracle_arg)
         for id_, block in results:
             golden.append(summarize(id_, block))
         if failure:
@@ -121,7 +124,8 @@ def main():
         position = 0
         while position < len(safe):
             results, failure, consumed = run_batch(
-                options.oracle, safe[position:], options.timeout, full=True)
+                options.oracle, safe[position:], options.timeout, full=True,
+                extra=options.oracle_arg)
             for id_, block in results:
                 dumps.append("@ " + id_)
                 dumps.extend(block)

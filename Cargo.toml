@@ -1,5 +1,5 @@
 [workspace]
-members = ["engine", "compare"]
+members = ["engine", "compare", "ffi"]
 resolver = "3"
 
 [workspace.package]
